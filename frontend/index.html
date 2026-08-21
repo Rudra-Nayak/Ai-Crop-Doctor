@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Crop Doctor — Real-Time Multimodal Plant Pathology Assistant</title>
+  <meta name="description" content="AI-powered multimodal crop disease diagnostic assistant. Diagnoses plant diseases via live camera, photo upload, voice description, and agricultural RAG.">
+
+  <!-- Google Fonts: Outfit (Brand & Headings) and Inter (UI & Text) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- ====================================================================
+         Header & Navigation
+         ==================================================================== -->
+    <header class="app-header">
+      <div class="brand-section">
+        <div class="brand-logo" aria-label="AI Crop Doctor Logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
+            <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>AI Crop Doctor <span class="badge-ver">v1.0 Agentic</span></h1>
+          <p>Real-Time Multimodal Agronomic Pathology & Treatment</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="system-status-pill" id="health-status-pill" title="Checking status...">
+          <div class="status-dot" id="status-dot"></div>
+          <span id="status-text">Connecting...</span>
+        </div>
+
+        <button class="header-btn" id="btn-auto-tts" title="Toggle Auto-Speech Readout" aria-label="Toggle Voice Readout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+          <span>Voice ON</span>
+        </button>
+
+        <button class="header-btn" id="btn-new-case" title="Start New Consultation" aria-label="New Case">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"></path>
+          </svg>
+          <span>New Case</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ====================================================================
+         Main Workspace Layout
+         ==================================================================== -->
+    <main class="main-layout">
+
+      <!-- LEFT COLUMN: Multimodal Input Hub -->
+      <section class="glass-panel" aria-label="Input Command Center">
+        <div class="panel-header">
+          <h2 class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+            Multimodal Input Hub
+          </h2>
+        </div>
+
+        <div class="panel-body">
+          
+          <!-- Visual Input Selector -->
+          <div class="visual-input-section">
+            <div class="input-tab-group">
+              <button type="button" class="tab-btn active" id="tab-upload">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                Upload Leaf Photo
+              </button>
+              <button type="button" class="tab-btn" id="tab-camera">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                Live Camera
+              </button>
+            </div>
+
+            <!-- Upload Dropzone -->
+            <div class="dropzone-container" id="dropzone">
+              <input type="file" id="file-input" accept="image/*" style="display:none">
+              <div class="dropzone-content">
+                <div class="dropzone-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                </div>
+                <div class="dropzone-title">Click or Drag & Drop Crop Photo</div>
+                <div class="dropzone-sub">Supports JPG, PNG, WEBP — Clear close-up of leaf/stem</div>
+              </div>
+            </div>
+
+            <!-- Camera View Container -->
+            <div class="camera-view-container" id="camera-container">
+              <video id="camera-video" playsinline></video>
+              <div class="camera-controls">
+                <button type="button" class="snap-btn" id="btn-snap" title="Take Photo"></button>
+              </div>
+            </div>
+
+            <!-- Image Preview Box -->
+            <div class="image-preview-wrapper" id="image-preview-wrapper">
+              <img id="preview-img" src="" alt="Selected crop preview">
+              <div class="preview-overlay-info">
+                <span class="preview-name" id="preview-file-name">crop_leaf.jpg</span>
+                <button type="button" class="preview-clear-btn" id="btn-clear-image">Remove</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sample Quick Test Presets -->
+          <div class="sample-presets">
+            <div class="sample-presets-title">Instant Sample Presets</div>
+            <div class="preset-chip-list" id="preset-chips-container">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <!-- Voice / Audio Input Section -->
+          <div class="voice-input-section">
+            <div class="voice-header">
+              <span class="voice-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                Voice Symptom Recording (Groq Whisper)
+              </span>
+            </div>
+            <div class="voice-recorder-bar">
+              <button type="button" class="mic-btn" id="btn-mic" title="Click to Record Voice" aria-label="Microphone">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+              </button>
+              <div class="audio-visualizer-box">
+                <canvas id="audio-canvas" width="260" height="46"></canvas>
+              </div>
+            </div>
+            <div class="audio-status-label" id="audio-status-label">Mic ready — Click to speak description</div>
+          </div>
+
+          <!-- Text Symptom Input Area -->
+          <div class="text-input-section">
+            <textarea class="symptom-textarea" id="symptom-input" placeholder="Describe symptoms: e.g., 'Tomato leaves have brown circular spots with yellow edges spreading from lower stems...'"></textarea>
+          </div>
+
+          <!-- Action Submit Button -->
+          <button type="button" class="submit-btn" id="btn-submit">
+            <div class="spinner" id="submit-spinner"></div>
+            <span id="submit-btn-text">Send to Crop Doctor</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
+
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN: Dialogue Timeline & Prescription -->
+      <div class="right-column">
+
+        <!-- Diagnostic Conversation Feed -->
+        <section class="glass-panel timeline-feed-panel" aria-label="Diagnostic Timeline">
+          <div class="panel-header">
+            <h2 class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              Two-Way Diagnostic Consultation
+            </h2>
+          </div>
+          <div class="feed-messages-container" id="chat-messages">
+            <!-- Dynamically populated messages -->
+          </div>
+        </section>
+
+        <!-- Confidence-Aware Diagnostic Prescription Card -->
+        <section class="glass-panel prescription-panel" id="prescription-panel" aria-label="Diagnostic Prescription">
+          
+          <!-- Header Banner -->
+          <div class="prescription-header">
+            <div class="disease-info-group">
+              <h2 id="rx-disease-name">Early Blight (Alternaria solani)</h2>
+              <div class="plant-sub" id="rx-plant-name">Plant: Tomato (Solanum lycopersicum)</div>
+            </div>
+
+            <div class="badge-group">
+              <span class="severity-tag moderate" id="rx-severity-tag">MODERATE</span>
+              
+              <!-- Circular Confidence Gauge -->
+              <div class="confidence-gauge-box">
+                <div class="gauge-svg-container">
+                  <svg class="gauge-svg" viewBox="0 0 44 44">
+                    <circle class="gauge-bg-circle" cx="22" cy="22" r="18"/>
+                    <circle class="gauge-progress-circle" id="rx-confidence-progress" cx="22" cy="22" r="18"/>
+                  </svg>
+                  <div class="gauge-text" id="rx-confidence-text">88%</div>
+                </div>
+                <div class="gauge-meta">
+                  <span class="gauge-meta-title">Confidence</span>
+                  <span class="gauge-meta-status" id="rx-confidence-status">High Confidence</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Prescription Tabs -->
+          <div class="treatment-tabs">
+            <button type="button" class="treat-tab active" data-target="sec-organic">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a9 9 0 0 1 9 9c0 4.97-4.03 9-9 9A9 9 0 0 1 3 11C3 6.03 7.03 2 12 2z"/><path d="M12 12c-2 0-3 1-3 3s1 3 3 3 3-1 3-3-1-3-3-3z"/></svg>
+              🌿 Organic Treatments
+            </button>
+            <button type="button" class="treat-tab" data-target="sec-chemical">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2v7.31L4 18h16l-6-8.69V2h-4z"/></svg>
+              🧪 Chemical Interventions
+            </button>
+            <button type="button" class="treat-tab" data-target="sec-prevention">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              🛡️ Prevention & Agronomy
+            </button>
+            <button type="button" class="treat-tab" data-target="sec-evidence">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              📚 RAG Evidence Sources
+            </button>
+          </div>
+
+          <!-- Tabbed Content Panels -->
+          <div class="treatment-body">
+            
+            <!-- Cause & Symptoms Bar -->
+            <div style="background:rgba(0,0,0,0.25);padding:1rem;border-radius:12px;border:1px solid var(--border-subtle);">
+              <div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.25rem;">Pathological Cause & Etiology</div>
+              <p id="rx-cause-text" style="font-size:0.9rem;color:var(--text-secondary);"></p>
+              
+              <div style="margin-top:0.75rem;">
+                <div style="font-size:0.75rem;font-weight:600;color:var(--text-muted);">Observed Key Symptoms:</div>
+                <div class="chips-container" id="rx-symptoms-list"></div>
+              </div>
+            </div>
+
+            <!-- Tab 1: Organic -->
+            <div class="treatment-card-section active" id="sec-organic">
+              <ul class="treatment-list" id="rx-organic-list"></ul>
+            </div>
+
+            <!-- Tab 2: Chemical -->
+            <div class="treatment-card-section" id="sec-chemical">
+              <ul class="treatment-list" id="rx-chemical-list"></ul>
+            </div>
+
+            <!-- Tab 3: Prevention -->
+            <div class="treatment-card-section" id="sec-prevention">
+              <ul class="treatment-list" id="rx-prevention-list"></ul>
+            </div>
+
+            <!-- Tab 4: Evidence & Citations -->
+            <div class="treatment-card-section" id="sec-evidence">
+              <ul class="treatment-list" id="rx-evidence-list"></ul>
+            </div>
+
+          </div>
+
+          <!-- Prescription Footer / Export Actions -->
+          <div class="prescription-footer">
+            <button type="button" class="rx-action-btn speak-rx" id="btn-speak-rx">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M8 5v14l11-7z"/></svg>
+              Read Prescription Aloud (Groq TTS)
+            </button>
+            <button type="button" class="rx-action-btn print-rx" id="btnPrintRx" onclick="window.print()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+              Print / Save PDF Report
+            </button>
+          </div>
+
+        </section>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

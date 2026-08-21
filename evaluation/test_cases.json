@@ -1,0 +1,94 @@
+[
+  {
+    "id": "tc_01",
+    "description": "Tomato early blight with clear leaf spots",
+    "farmer_text": "My tomato leaves have brown spots with concentric rings, starting from the lower leaves",
+    "expected_disease": "Early Blight",
+    "expected_plant": "Tomato",
+    "expected_min_confidence": 0.70,
+    "category": "fungal"
+  },
+  {
+    "id": "tc_02",
+    "description": "Rice blast on leaf",
+    "farmer_text": "Diamond-shaped gray spots on my rice leaves with dark borders",
+    "expected_disease": "Rice Blast",
+    "expected_plant": "Rice",
+    "expected_min_confidence": 0.70,
+    "category": "fungal"
+  },
+  {
+    "id": "tc_03",
+    "description": "Healthy tomato plant",
+    "farmer_text": "Can you check my tomato plant? It looks fine but I want to make sure",
+    "expected_disease": "Healthy",
+    "expected_plant": "Tomato",
+    "expected_min_confidence": 0.60,
+    "category": "healthy"
+  },
+  {
+    "id": "tc_04",
+    "description": "Ambiguous symptoms requiring follow-up",
+    "farmer_text": "My plants are turning yellow",
+    "expected_disease": "Unknown",
+    "expected_plant": "Unknown",
+    "expected_min_confidence": 0.30,
+    "category": "ambiguous",
+    "expect_followup": true
+  },
+  {
+    "id": "tc_05",
+    "description": "Wheat rust symptoms",
+    "farmer_text": "Orange-brown powdery pustules on my wheat leaves",
+    "expected_disease": "Wheat Rust",
+    "expected_plant": "Wheat",
+    "expected_min_confidence": 0.70,
+    "category": "fungal"
+  },
+  {
+    "id": "tc_06",
+    "description": "Nitrogen deficiency in rice",
+    "farmer_text": "My rice plants are uniformly yellow starting from the older leaves, growth is stunted",
+    "expected_disease": "Nitrogen Deficiency",
+    "expected_plant": "Rice",
+    "expected_min_confidence": 0.60,
+    "category": "nutrient"
+  },
+  {
+    "id": "tc_07",
+    "description": "Cotton bollworm damage",
+    "farmer_text": "I see circular holes in my cotton bolls with worm droppings around them",
+    "expected_disease": "Cotton Bollworm",
+    "expected_plant": "Cotton",
+    "expected_min_confidence": 0.65,
+    "category": "pest"
+  },
+  {
+    "id": "tc_08",
+    "description": "Powdery mildew on cucurbits",
+    "farmer_text": "White powdery coating on my cucumber leaves, spreading fast",
+    "expected_disease": "Powdery Mildew",
+    "expected_plant": "Cucumber",
+    "expected_min_confidence": 0.70,
+    "category": "fungal"
+  },
+  {
+    "id": "tc_09",
+    "description": "Bacterial wilt in tomato",
+    "farmer_text": "My tomato plants suddenly wilted without any yellowing. When I cut the stem there is a brown ring inside",
+    "expected_disease": "Bacterial Wilt",
+    "expected_plant": "Tomato",
+    "expected_min_confidence": 0.70,
+    "category": "bacterial"
+  },
+  {
+    "id": "tc_10",
+    "description": "Non-plant image edge case",
+    "farmer_text": "What disease does this have?",
+    "expected_disease": "Not a plant",
+    "expected_plant": "None",
+    "expected_min_confidence": 0.0,
+    "category": "edge_case",
+    "notes": "Test with a non-plant image to verify graceful handling"
+  }
+]
