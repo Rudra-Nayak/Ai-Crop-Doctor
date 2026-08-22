@@ -21,8 +21,6 @@ COPY .env.example .env.example
 RUN mkdir -p uploads logs knowledge_base/faiss_index
 
 # Environment variables for 512MB RAM and dynamic PORT binding
-
-ENV PORT=8000
 EXPOSE 8000
 
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
