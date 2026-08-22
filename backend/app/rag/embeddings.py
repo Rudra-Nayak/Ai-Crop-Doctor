@@ -28,14 +28,27 @@ except Exception:
 from functools import lru_cache
 from sentence_transformers import SentenceTransformer
 
-logger = logging.getLogger(__name__)
+_MODEL_INSTANCE: SentenceTransformer | None = None
+_LOCK = Lock()
 
 
-@lru_cache(maxsize=1)
 def get_sentence_transformer(model_name: str = "all-MiniLM-L6-v2") -> SentenceTransformer:
-    """Load and cache the SentenceTransformer model singleton exactly once."""
-    logger.info("Loading embedding model: %s ...", model_name)
-    return SentenceTransformer(model_name, device="cpu")
+    """Load and cache the SentenceTransformer model singleton exactly once at server startup."""
+    global _MODEL_INSTANCE
+    if _MODEL_INSTANCE is not None:
+        return _MODEL_INSTANCE
+
+    with _LOCK:
+        if _MODEL_INSTANCE is not None:
+            return _MODEL_INSTANCE
+
+        logger.info("Loading embedding model ONCE: %s ...", model_name)
+        try:
+            _MODEL_INSTANCE = SentenceTransformer(model_name, device="cpu", local_files_only=True)
+        except Exception:
+            _MODEL_INSTANCE = SentenceTransformer(model_name, device="cpu")
+        logger.info("Embedding model loaded successfully into memory.")
+        return _MODEL_INSTANCE
 
 
 class LightweightEmbeddings:
@@ -74,4 +87,4 @@ def get_embeddings(model_name: str = "all-MiniLM-L6-v2") -> LightweightEmbedding
 
 def is_loaded() -> bool:
     """Check if the embedding model has been loaded into memory."""
-    return _embeddings_instance is not None
+    return _MODEL_INSTANCE is not None

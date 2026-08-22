@@ -88,12 +88,14 @@ async def lifespan(app: FastAPI):
 
     # ── Pre-load embedding model singleton ONCE at startup ────────
     logger.info("Pre-loading embedding model singleton once at startup...")
-    get_embeddings(config.embedding_model)
+    embeddings_instance = get_embeddings(config.embedding_model)
+    embeddings_instance.embed_query("startup warm-up")
+    logger.info("Embedding model is 100%% ready and cached in RAM.")
 
     # ── Initialize RAG pipeline (Supabase pgvector) ───────────────
     from app.rag.vector_store import SupabasePgVectorStore
     logger.info("Using Supabase pgvector RAG store (%s)", config.supabase_url or "cloud")
-    vector_store = SupabasePgVectorStore(config.supabase_url, config.supabase_key, get_embeddings)
+    vector_store = SupabasePgVectorStore(config.supabase_url, config.supabase_key, embeddings_instance)
 
     rag_service = RAGService(
         vector_store=vector_store,
