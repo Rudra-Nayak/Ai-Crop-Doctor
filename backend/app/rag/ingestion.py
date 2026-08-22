@@ -200,7 +200,13 @@ async def ingest_knowledge_base(
 
     # Initialize embeddings and vector store
     embeddings = get_embeddings(settings.embedding_model)
-    store = FAISSVectorStore(index_path, embeddings)
+    if settings.use_supabase_rag and settings.supabase_url and settings.supabase_key:
+        from app.rag.vector_store import SupabasePgVectorStore
+        logger.info("Ingesting into Supabase pgvector database (%s)", settings.supabase_url)
+        store = SupabasePgVectorStore(settings.supabase_url, settings.supabase_key, embeddings)
+    else:
+        logger.info("Ingesting into local FAISS vector index (%s)", index_path)
+        store = FAISSVectorStore(index_path, embeddings)
 
     total_chunks = len(chunks)
     logger.info("Ingesting %d chunks in batches of %d...", total_chunks, batch_size)
@@ -216,10 +222,9 @@ async def ingest_knowledge_base(
     await store.persist()
 
     logger.info(
-        "Ingestion complete: %d documents → %d chunks → FAISS index at %s",
+        "Ingestion complete: %d documents → %d chunks",
         len(docs),
         total_chunks,
-        index_path,
     )
     return total_chunks
 

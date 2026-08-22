@@ -158,11 +158,95 @@ class FAISSVectorStore(VectorStoreBase):
         return self._doc_count
 
 
-# ──────────────────────────────────────────────────────────────────────
-# Future implementation stub:
-#
-# class SupabasePgVectorStore(VectorStoreBase):
-#     """Supabase PostgreSQL + pgvector implementation."""
-#     def __init__(self, connection_string: str, embeddings: Embeddings):
-#         ...
-# ──────────────────────────────────────────────────────────────────────
+class SupabasePgVectorStore(VectorStoreBase):
+    """
+    Supabase PostgreSQL + pgvector vector store implementation.
+    
+    Stores knowledge base chunks and embeddings in Supabase database table `documents`.
+    Uses high-performance HNSW index & `match_documents` SQL function for vector search.
+    """
+
+    def __init__(self, url: str, key: str, embeddings: Embeddings | Callable[[], Embeddings]) -> None:
+        self._url = url
+        self._key = key
+        self._embeddings_raw = embeddings
+        self._embeddings: Embeddings | None = embeddings if not callable(embeddings) else None
+        self._client = None
+
+    def _ensure_client(self) -> None:
+        if self._client is not None:
+            return
+        from supabase import create_client
+        self._client = create_client(self._url, self._key)
+        if self._embeddings is None and callable(self._embeddings_raw):
+            self._embeddings = self._embeddings_raw()
+
+    async def add_documents(self, docs: list[Document]) -> int:
+        if not docs:
+            return 0
+        self._ensure_client()
+
+        texts = [doc.page_content for doc in docs]
+        vector_embeddings = self._embeddings.embed_documents(texts)
+
+        records = []
+        for doc, emb in zip(docs, vector_embeddings):
+            records.append({
+                "content": doc.page_content,
+                "metadata": doc.metadata or {},
+                "embedding": emb,
+            })
+
+        batch_size = 100
+        for i in range(0, len(records), batch_size):
+            batch = records[i : i + batch_size]
+            self._client.table("documents").insert(batch).execute()
+
+        logger.info("Inserted %d documents into Supabase pgvector.", len(docs))
+        return len(docs)
+
+    async def similarity_search(self, query: str, k: int = 5) -> list[dict]:
+        self._ensure_client()
+        query_embedding = self._embeddings.embed_query(query)
+
+        try:
+            rpc_res = self._client.rpc(
+                "match_documents",
+                {
+                    "query_embedding": query_embedding,
+                    "match_threshold": 0.0,
+                    "match_count": k,
+                }
+            ).execute()
+
+            results = []
+            for row in rpc_res.data or []:
+                results.append({
+                    "content": row.get("content", ""),
+                    "metadata": row.get("metadata", {}),
+                    "score": round(float(row.get("similarity", 0.0)), 4),
+                })
+            return results
+        except Exception as e:
+            logger.error("Supabase pgvector similarity search failed: %s", e)
+            return []
+
+    async def health_check(self) -> bool:
+        try:
+            self._ensure_client()
+            res = self._client.table("documents").select("id", count="exact").limit(1).execute()
+            return res is not None
+        except Exception as e:
+            logger.warning("Supabase health check warning: %s", e)
+            return False
+
+    async def persist(self) -> None:
+        pass  # Supabase auto-persists in PostgreSQL
+
+    def document_count(self) -> int:
+        try:
+            self._ensure_client()
+            res = self._client.table("documents").select("id", count="exact").limit(1).execute()
+            return res.count or 0
+        except Exception:
+            return 0

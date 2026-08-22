@@ -83,3 +83,71 @@ class InMemorySessionStore(SessionStore):
 
     async def list_active_cases(self) -> list[Case]:
         return [c for c in self._cases.values() if c.status == "active"]
+
+
+class SupabaseSessionStore(SessionStore):
+    """
+    Supabase PostgreSQL-backed session store.
+
+    Persists diagnostic consultation history, messages, and structured prescriptions
+    to table `diagnostic_cases` in Supabase PostgreSQL.
+    """
+
+    def __init__(self, url: str, key: str) -> None:
+        from supabase import create_client
+        self._client = create_client(url, key)
+
+    async def create_case(self) -> Case:
+        case_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
+        case = Case(
+            case_id=case_id,
+            created_at=now,
+            updated_at=now,
+            status="active",
+        )
+        data = {
+            "case_id": case_id,
+            "status": "active",
+            "messages": [],
+            "diagnosis": None,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }
+        self._client.table("diagnostic_cases").insert(data).execute()
+        return case
+
+    async def get_case(self, case_id: str) -> Case | None:
+        try:
+            res = self._client.table("diagnostic_cases").select("*").eq("case_id", case_id).execute()
+            if not res.data:
+                return None
+            row = res.data[0]
+            # Deserialize row to Case object
+            case = Case.model_validate(row)
+            return case
+        except Exception:
+            return None
+
+    async def update_case(self, case: Case) -> None:
+        try:
+            case.updated_at = datetime.now(timezone.utc)
+            data = case.model_dump(mode="json")
+            self._client.table("diagnostic_cases").update(data).eq("case_id", case.case_id).execute()
+        except Exception:
+            pass
+
+    async def add_message(self, case_id: str, message: Message) -> Case | None:
+        case = await self.get_case(case_id)
+        if case is None:
+            return None
+        case.add_message(message)
+        await self.update_case(case)
+        return case
+
+    async def list_active_cases(self) -> list[Case]:
+        try:
+            res = self._client.table("diagnostic_cases").select("*").eq("status", "active").execute()
+            return [Case.model_validate(row) for row in res.data or []]
+        except Exception:
+            return []

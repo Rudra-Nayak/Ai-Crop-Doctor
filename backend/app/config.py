@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_rerank_top_n: int = 3
 
+    # ── Supabase Cloud Integration ────────────────────────────────────
+    supabase_url: str = ""
+    supabase_key: str = ""
+    supabase_service_role_key: str = ""
+    use_supabase_rag: bool = False
+    use_supabase_session: bool = False
+    use_supabase_storage: bool = False
+
     # ── Agent ─────────────────────────────────────────────────────────
     confidence_threshold: float = 0.70
     max_agent_iterations: int = 8

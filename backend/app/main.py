@@ -88,8 +88,13 @@ async def lifespan(app: FastAPI):
     os.makedirs(config.log_dir, exist_ok=True)
 
     # ── Initialize RAG pipeline ───────────────────────────────────
-    logger.info("Initializing lazy FAISS vector store from: %s", config.faiss_index_path)
-    vector_store = FAISSVectorStore(config.faiss_index_path, get_embeddings)
+    if config.use_supabase_rag and config.supabase_url and config.supabase_key:
+        logger.info("Using Supabase pgvector RAG store (%s)", config.supabase_url)
+        from app.rag.vector_store import SupabasePgVectorStore
+        vector_store = SupabasePgVectorStore(config.supabase_url, config.supabase_key, get_embeddings)
+    else:
+        logger.info("Using local FAISS vector store from: %s", config.faiss_index_path)
+        vector_store = FAISSVectorStore(config.faiss_index_path, get_embeddings)
 
     rag_service = RAGService(
         vector_store=vector_store,
@@ -100,9 +105,17 @@ async def lifespan(app: FastAPI):
     # ── Initialize services ───────────────────────────────────────
     vision_service = VisionService()
     speech_service = SpeechService()
+    from app.services.storage import StorageService
+    storage_service = StorageService(config)
 
     # ── Initialize session management ─────────────────────────────
-    session_store = InMemorySessionStore()
+    if config.use_supabase_session and config.supabase_url and config.supabase_key:
+        logger.info("Using Supabase PostgreSQL session store")
+        from app.session.store import SupabaseSessionStore
+        session_store = SupabaseSessionStore(config.supabase_url, config.supabase_key)
+    else:
+        session_store = InMemorySessionStore()
+
     session_manager = SessionManager(session_store)
 
     # ── Initialize the diagnostic agent & flow ────────────────────
@@ -122,6 +135,7 @@ async def lifespan(app: FastAPI):
     app.state.rag_service = rag_service
     app.state.vision_service = vision_service
     app.state.speech_service = speech_service
+    app.state.storage_service = storage_service
     app.state.session_manager = session_manager
     app.state.diagnostic_agent = diagnostic_agent
     app.state.diagnostic_flow = diagnostic_flow
