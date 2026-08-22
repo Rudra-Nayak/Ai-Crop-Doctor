@@ -26,7 +26,6 @@ beautifulsoup4
 
 # Supabase Cloud Integration (pgvector, DB, Storage)
 supabase
-veccsy
 
 # Utilities
 python-dotenv
