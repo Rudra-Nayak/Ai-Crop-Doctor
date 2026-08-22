@@ -104,19 +104,15 @@ def _detect_mime_type(image_path: str) -> str:
 
 
 class VisionService:
-    """Groq-powered crop image analysis."""
+    """Groq-powered crop image analysis (Async)."""
 
     def __init__(self) -> None:
         self._settings = get_settings()
-        self._client = Groq(api_key=self._settings.groq_api_key)
+        self._client = AsyncGroq(api_key=self._settings.groq_api_key)
 
     async def analyze_image(self, image_path: str) -> dict:
         """
-        Analyze a crop image using Groq's vision model.
-
-        Returns a structured dict with findings. On failure, returns
-        a safe error dict instead of raising — the agent can continue
-        without vision data.
+        Analyze a crop image using Groq's vision model asynchronously.
         """
         try:
             if not os.path.exists(image_path):
@@ -128,7 +124,7 @@ class VisionService:
 
             logger.info("Analyzing image: %s (model: %s)", image_path, self._settings.groq_vision_model)
 
-            response = self._client.chat.completions.create(
+            response = await self._client.chat.completions.create(
                 model=self._settings.groq_vision_model,
                 messages=[
                     {
@@ -177,9 +173,7 @@ class VisionService:
             mime_type = _detect_mime_type(image_path)
             image_url = f"data:{mime_type};base64,{base64_image}"
 
-            logger.info("Analyzing image (legacy model call): %s", image_path)
-
-            response = self._client.chat.completions.create(
+            response = await self._client.chat.completions.create(
                 model=self._settings.groq_vision_model,
                 messages=[
                     {

@@ -12,7 +12,7 @@ import os
 import logging
 from typing import Any
 
-from groq import Groq
+from groq import AsyncGroq
 
 # Apply compatibility patches for CrewAI / LiteLLM on non-Anthropic providers
 try:
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 class DiagnosticAgent:
     """
-    Factory and runner for the single diagnostic agent.
+    Factory and runner for the single diagnostic agent (Async).
 
     Creates a CrewAI Agent equipped with 4 tools and runs it
     against a diagnostic task built from the current case state.
@@ -66,7 +66,7 @@ class DiagnosticAgent:
         self._config = config
         self._vision_service = vision_service
         self._rag_service = rag_service
-        self._groq_client = Groq(api_key=config.groq_api_key)
+        self._groq_client = AsyncGroq(api_key=config.groq_api_key)
 
     def _create_agent(self) -> Any:
         """Create the diagnostic agent instance lazily."""
@@ -183,11 +183,10 @@ class DiagnosticAgent:
                 f"Conversation History:\n{conversation_history or 'New consultation.'}"
             )
 
-            import time
             resp = None
             for attempt in range(3):
                 try:
-                    resp = self._groq_client.chat.completions.create(
+                    resp = await self._groq_client.chat.completions.create(
                         model=self._config.groq_text_model,
                         messages=[
                             {"role": "system", "content": system_prompt},
@@ -201,7 +200,7 @@ class DiagnosticAgent:
                     if attempt == 2:
                         raise g_err
                     logger.warning("Groq API call attempt %d failed: %s. Retrying...", attempt + 1, g_err)
-                    time.sleep(2 * (attempt + 1))
+                    await asyncio.sleep(2 * (attempt + 1))
 
             fallback_raw = resp.choices[0].message.content
             return self._parse_output(fallback_raw)
