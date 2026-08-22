@@ -13,7 +13,7 @@
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600&family=Noto+Sans+Gurmukhi:wght@400;500;600&family=Noto+Sans+Oriya:wght@400;500;600&display=swap" rel="stylesheet">
 
-    <!-- Embedded Core CSS (Zero Network Delay / Works Offline) -->
+    <!-- Embedded Core CSS -->
     <style>
     :root {
         --brand-50:  #f0fdf4;
@@ -339,7 +339,7 @@
     .image-preview-inner img { height: 72px; max-width: 120px; object-fit: cover; display: block; }
     .image-remove-btn {
         position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%;
-        border: none; background: rgba(0,0,0,0.6); color: white; font-size: 10px;
+        border: none; background: rgba(0,0,0,0.6); color: white; font-size: 12px;
         display: flex; align-items: center; justify-content: center; cursor: pointer;
     }
 
@@ -368,7 +368,6 @@
         .composer-input { font-size: 16px; padding: 9px 12px; }
     }
     </style>
-    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -377,7 +376,7 @@
         <div class="nav-inner">
             <div class="nav-brand">
                 <div class="brand-icon">
-                    <i class="bi bi-flower1">&#127793;</i>
+                    <i class="bi bi-flower1"></i>
                 </div>
                 <div class="brand-text">
                     <h1>AI Crop Doctor</h1>
@@ -390,26 +389,26 @@
             <div class="nav-actions">
                 <div class="lang-selector" id="langSelector">
                     <button class="lang-btn" id="langBtn" aria-label="Select language" title="Select language">
-                        <i class="bi bi-translate">&#127760;</i>
+                        <i class="bi bi-translate"></i>
                         <span id="langLabel">EN</span>
-                        <i class="bi bi-chevron-down lang-chevron">&#9662;</i>
+                        <i class="bi bi-chevron-down lang-chevron"></i>
                     </button>
                     <div class="lang-dropdown" id="langDropdown">
                         <button class="lang-option active" data-lang="en" data-label="EN">
                             <span class="lang-name">English</span>
-                            <span class="lang-check">&#10003;</span>
+                            <i class="bi bi-check2 lang-check"></i>
                         </button>
                         <button class="lang-option" data-lang="hi" data-label="हिं">
                             <span class="lang-name">हिन्दी</span>
-                            <span class="lang-check">&#10003;</span>
+                            <i class="bi bi-check2 lang-check"></i>
                         </button>
                         <button class="lang-option" data-lang="or" data-label="ଓ">
                             <span class="lang-name">ଓଡ଼ିଆ</span>
-                            <span class="lang-check">&#10003;</span>
+                            <i class="bi bi-check2 lang-check"></i>
                         </button>
                         <button class="lang-option" data-lang="pa" data-label="ਪੰ">
                             <span class="lang-name">ਪੰਜਾਬੀ</span>
-                            <span class="lang-check">&#10003;</span>
+                            <i class="bi bi-check2 lang-check"></i>
                         </button>
                     </div>
                 </div>
@@ -426,7 +425,7 @@
                 <div class="welcome-content">
                     <div class="welcome-icon-ring">
                         <div class="welcome-icon">
-                            <span>&#127793;</span>
+                            <i class="bi bi-flower1"></i>
                         </div>
                     </div>
                     <h2 class="welcome-title" data-i18n="welcome_title">AI Crop Doctor</h2>
@@ -434,15 +433,15 @@
 
                     <div class="welcome-capabilities">
                         <div class="capability">
-                            <div class="cap-icon"><span>&#128247;</span></div>
+                            <div class="cap-icon"><i class="bi bi-camera"></i></div>
                             <span data-i18n="cap_photo">Crop photo analysis</span>
                         </div>
                         <div class="capability">
-                            <div class="cap-icon"><span>&#128172;</span></div>
+                            <div class="cap-icon"><i class="bi bi-chat-dots"></i></div>
                             <span data-i18n="cap_text">Symptom description</span>
                         </div>
                         <div class="capability">
-                            <div class="cap-icon"><span>&#127908;</span></div>
+                            <div class="cap-icon"><i class="bi bi-mic"></i></div>
                             <span data-i18n="cap_voice">Voice diagnosis</span>
                         </div>
                     </div>
@@ -450,15 +449,15 @@
                     <div class="welcome-suggestions" id="welcomeSuggestions">
                         <p class="suggestion-label" data-i18n="try_asking">Try asking:</p>
                         <button class="suggestion-chip" data-text="Why are my tomato leaves turning brown?">
-                            <span>&#10132;</span>
+                            <i class="bi bi-arrow-right-circle"></i>
                             <span>Why are my tomato leaves turning brown?</span>
                         </button>
                         <button class="suggestion-chip" data-text="My rice leaves have spots.">
-                            <span>&#10132;</span>
+                            <i class="bi bi-arrow-right-circle"></i>
                             <span>My rice leaves have spots.</span>
                         </button>
                         <button class="suggestion-chip" data-text="Check this crop for disease.">
-                            <span>&#10132;</span>
+                            <i class="bi bi-arrow-right-circle"></i>
                             <span>Check this crop for disease.</span>
                         </button>
                     </div>
@@ -479,7 +478,7 @@
             <div class="image-preview-inner">
                 <img id="imagePreviewImg" src="" alt="Selected crop image preview">
                 <button class="image-remove-btn" id="imageRemoveBtn" aria-label="Remove image" title="Remove selected image">
-                    &#10005;
+                    <i class="bi bi-x"></i>
                 </button>
             </div>
         </div>
@@ -491,10 +490,10 @@
                 <span class="rec-label" data-i18n="recording">Recording...</span>
                 <span class="rec-timer" id="recTimer">0:00</span>
                 <button class="rec-cancel-btn" id="recCancelBtn" aria-label="Cancel recording" title="Cancel recording">
-                    &#10005;
+                    <i class="bi bi-x-lg"></i>
                 </button>
                 <button class="rec-stop-btn" id="recStopBtn" aria-label="Stop recording and use" title="Stop recording">
-                    &#9632;
+                    <i class="bi bi-stop-fill"></i>
                 </button>
             </div>
         </div>
@@ -503,7 +502,7 @@
         <div class="composer-row">
             <input type="file" id="imageInput" accept="image/jpeg,image/png,image/webp,image/bmp" capture="environment" class="d-none" aria-label="Upload crop image">
             <button class="composer-btn attach-btn" id="attachBtn" aria-label="Attach crop image" title="Upload crop photo">
-                <i class="bi bi-plus-lg">+</i>
+                <i class="bi bi-plus-lg"></i>
             </button>
 
             <div class="composer-input-wrap">
@@ -518,11 +517,11 @@
             </div>
 
             <button class="composer-btn mic-btn" id="micBtn" aria-label="Record voice message" title="Record voice message">
-                <i class="bi bi-mic">&#127908;</i>
+                <i class="bi bi-mic"></i>
             </button>
 
             <button class="composer-btn send-btn" id="sendBtn" aria-label="Send message" title="Send diagnosis request" disabled>
-                <i class="bi bi-arrow-up">&#10148;</i>
+                <i class="bi bi-arrow-up"></i>
             </button>
         </div>
     </footer>
@@ -534,7 +533,7 @@
                 <div class="msg-user-image" data-slot="userImage"></div>
                 <div class="msg-text" data-slot="userText"></div>
                 <div class="msg-voice-badge" data-slot="voiceBadge">
-                    <span>&#127908;</span> <span data-i18n="voice_input">Voice message</span>
+                    <i class="bi bi-mic-fill"></i> <span data-i18n="voice_input">Voice message</span>
                 </div>
             </div>
         </div>
@@ -543,7 +542,7 @@
     <template id="tmplAiMsg">
         <div class="msg msg-ai">
             <div class="msg-avatar">
-                <span>&#127793;</span>
+                <i class="bi bi-flower1"></i>
             </div>
             <div class="msg-bubble msg-bubble-ai" data-slot="aiContent">
             </div>
@@ -553,7 +552,7 @@
     <template id="tmplLoading">
         <div class="msg msg-ai msg-loading" id="loadingMsg">
             <div class="msg-avatar">
-                <span>&#127793;</span>
+                <i class="bi bi-flower1"></i>
             </div>
             <div class="msg-bubble msg-bubble-ai">
                 <div class="loading-dots">
