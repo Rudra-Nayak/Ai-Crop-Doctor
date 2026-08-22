@@ -25,7 +25,6 @@ from app.api.health import router as health_router
 from app.api.voice import router as voice_router
 from app.config import get_settings
 from app.rag.embeddings import get_embeddings
-from app.rag.vector_store import FAISSVectorStore
 from app.services.rag import RAGService
 from app.services.speech import SpeechService
 from app.services.vision import VisionService

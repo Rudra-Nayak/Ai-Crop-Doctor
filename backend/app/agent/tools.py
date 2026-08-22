@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Any, Type
 
-from crewai.tools import BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.services.rag import RAGService

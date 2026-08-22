@@ -178,13 +178,18 @@ class SupabasePgVectorStore(VectorStoreBase):
             return
         from supabase import create_client
         self._client = create_client(self._url, self._key)
-        if self._embeddings is None and callable(self._embeddings_raw):
+
+    def _ensure_embeddings(self) -> None:
+        if self._embeddings is not None:
+            return
+        if callable(self._embeddings_raw):
             self._embeddings = self._embeddings_raw()
 
     async def add_documents(self, docs: list[Document]) -> int:
         if not docs:
             return 0
         self._ensure_client()
+        self._ensure_embeddings()
 
         texts = [doc.page_content for doc in docs]
         vector_embeddings = self._embeddings.embed_documents(texts)
@@ -207,6 +212,7 @@ class SupabasePgVectorStore(VectorStoreBase):
 
     async def similarity_search(self, query: str, k: int = 5) -> list[dict]:
         self._ensure_client()
+        self._ensure_embeddings()
         query_embedding = self._embeddings.embed_query(query)
 
         try:
