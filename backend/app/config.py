@@ -5,6 +5,7 @@ Loads all settings from environment variables / .env file.
 Uses pydantic-settings for validation and type coercion.
 """
 
+import os
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
