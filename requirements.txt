@@ -1,0 +1,33 @@
+# Core
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+pydantic-settings
+
+# AI / Agents
+crewai
+litellm
+langchain
+langchain-core
+langchain-community
+langchain-groq
+groq
+
+# RAG
+faiss-cpu
+sentence-transformers
+langchain-huggingface
+
+# Document loading
+pypdf
+pdfplumber
+pymupdf
+beautifulsoup4
+
+# Utilities
+python-dotenv
+httpx
+Pillow
+numpy
+gTTS

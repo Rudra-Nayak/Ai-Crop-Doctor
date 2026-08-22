@@ -1,10 +1,14 @@
 services:
   - type: web
     name: ai-crop-doctor
-    env: docker
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PYTHONPATH
+        value: "backend"
       - key: OMP_NUM_THREADS
         value: "1"
       - key: MKL_NUM_THREADS
