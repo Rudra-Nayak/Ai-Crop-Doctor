@@ -236,6 +236,30 @@ class SupabasePgVectorStore(VectorStoreBase):
                     "metadata": row.get("metadata", {}),
                     "score": round(float(row.get("similarity", 0.0)), 4),
                 })
+
+            if results:
+                return results
+
+            # Fast Cloud Text Search Fallback (uses 0 MB server RAM)
+            try:
+                words = [w.strip() for w in query.replace("\n", " ").split() if len(w.strip()) > 3]
+                if words:
+                    def _kw_search():
+                        q = self._client.table("documents").select("content, metadata")
+                        for w in words[:2]:
+                            q = q.ilike("content", f"%{w}%")
+                        return q.limit(k).execute()
+
+                    kw_res = await asyncio.to_thread(_kw_search)
+                    for row in kw_res.data or []:
+                        results.append({
+                            "content": row.get("content", ""),
+                            "metadata": row.get("metadata", {}),
+                            "score": 0.75,
+                        })
+            except Exception as kw_e:
+                logger.debug("Supabase keyword search fallback skipped: %s", kw_e)
+
             return results
         except Exception as e:
             logger.error("Supabase pgvector similarity search failed: %s", e)
