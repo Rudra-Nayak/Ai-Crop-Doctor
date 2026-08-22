@@ -12,7 +12,6 @@ import os
 import logging
 from typing import Any
 
-from crewai import Agent, Crew, Task, LLM
 from groq import Groq
 
 # Apply compatibility patches for CrewAI / LiteLLM on non-Anthropic providers
@@ -67,35 +66,17 @@ class DiagnosticAgent:
         self._config = config
         self._vision_service = vision_service
         self._rag_service = rag_service
+        self._groq_client = Groq(api_key=config.groq_api_key)
 
-        # LLM for agent reasoning (via CrewAI LLM native class)
-        self._llm = LLM(
-            model=f"groq/{config.groq_text_model}",
-            api_key=config.groq_api_key,
+    def _create_agent(self) -> Any:
+        """Create the diagnostic agent instance lazily."""
+        from crewai import Agent, LLM
+        llm = LLM(
+            model=f"groq/{self._config.groq_text_model}",
+            api_key=self._config.groq_api_key,
             temperature=0.2,
             max_tokens=2048,
         )
-
-        # Groq client for confidence check tool
-        self._groq_client = Groq(api_key=config.groq_api_key)
-
-        # Build tools
-        self._tools = self._build_tools()
-
-    def _build_tools(self) -> list:
-        """Create tool instances with injected services."""
-        return [
-            AnalyzeCropImageTool(vision_service=self._vision_service),
-            SearchKnowledgeBaseTool(rag_service=self._rag_service),
-            CheckConfidenceTool(
-                groq_client=self._groq_client,
-                groq_model=self._config.groq_text_model,
-            ),
-            AskFollowupQuestionTool(),
-        ]
-
-    def _create_agent(self) -> Agent:
-        """Create the diagnostic agent instance."""
         return Agent(
             role="Senior Agricultural Diagnostician",
             goal=(
@@ -106,7 +87,7 @@ class DiagnosticAgent:
             ),
             backstory=DIAGNOSTIC_AGENT_BACKSTORY,
             tools=self._tools,
-            llm=self._llm,
+            llm=llm,
             verbose=True,
             allow_delegation=False,
             max_iter=self._config.max_agent_iterations,

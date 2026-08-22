@@ -20,8 +20,7 @@ COPY .env.example .env.example
 # Create directories
 RUN mkdir -p uploads logs knowledge_base/faiss_index
 
-# Ingest knowledge base at build time
-RUN python -m app.rag.ingestion || echo "Warning: Knowledge base ingestion skipped"
+# Environment variables for 512MB RAM and dynamic PORT binding
 
 ENV PORT=8000
 EXPOSE 8000
