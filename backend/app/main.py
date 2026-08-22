@@ -185,8 +185,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Register routers ─────────────────────────────────────────────────
+@app.get("/api/debug_step")
+async def debug_step(step: int = 1):
+    import time
+    t0 = time.time()
+    if step == 1:
+        # Step 1: Session store case creation
+        sm = app.state.session_manager
+        case = await sm.get_or_create_case(None)
+        return {"step": 1, "status": "ok", "case_id": case.case_id, "elapsed_ms": round((time.time() - t0) * 1000, 1)}
+    elif step == 2:
+        # Step 2: RAG query
+        rag = app.state.rag_service
+        docs = await rag.query("Tomato early blight")
+        return {"step": 2, "status": "ok", "docs_count": len(docs), "elapsed_ms": round((time.time() - t0) * 1000, 1)}
+    elif step == 3:
+        # Step 3: Groq LLM completion
+        from groq import AsyncGroq
+        cfg = app.state.config
+        client = AsyncGroq(api_key=cfg.groq_api_key)
+        res = await client.chat.completions.create(
+            model=cfg.groq_text_model,
+            messages=[{"role": "user", "content": "Hello"}],
+            max_tokens=10,
+        )
+        return {"step": 3, "status": "ok", "response": res.choices[0].message.content, "elapsed_ms": round((time.time() - t0) * 1000, 1)}
+    return {"error": "invalid step"}
 
+
+# Register routers
 app.include_router(diagnosis_router)
 app.include_router(voice_router)
 app.include_router(health_router)
