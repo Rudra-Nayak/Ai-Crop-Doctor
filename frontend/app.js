@@ -1,952 +1,975 @@
 /**
  * AI Crop Doctor — Frontend Application Logic
- * Vanilla JavaScript (ES6+) with Live Camera, Audio Waveform Recorder,
- * Speech Synthesis Player, and Confidence-Aware Diagnostic Visualizer.
- *
- * Supports Dynamic Modality Matching:
- * - If input was provided via Voice/Mic -> Response is spoken aloud via Speech (TTS)
- * - If input was provided via Text -> Response is given in Text (no auto-speech)
+ * Vanilla JavaScript + Bootstrap 5 + Native Web APIs
  */
 
-const API_BASE =
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1"
-        ? "http://localhost:8000"
-        : "https://ai-crop-doctor-1u6a.onrender.com";
+(() => {
+    'use strict';
 
-// Application State
-const AppState = {
-  caseId: null,
-  selectedImageFile: null,
-  cameraStream: null,
-  mediaRecorder: null,
-  audioChunks: [],
-  isRecording: false,
-  audioBlob: null,
-  audioContext: null,
-  analyser: null,
-  animationFrameId: null,
-  lastInputWasVoice: false,
-  currentDiagnosis: null,
-};
+    // ── Configuration ───────────────────────────────────────────────
+    const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:8000'
+        : 'https://ai-crop-doctor-1u6a.onrender.com';
 
-// Preset Sample Cases for 1-Click Instant Testing
-const SamplePresets = {
-  tomato_early_blight: {
-    name: "Tomato (Early Blight)",
-    symptoms: "Older lower leaves have dark brown concentric spots like target rings. Leaves turning yellow and dropping.",
-    plant: "Tomato",
-    svgColor: "#84cc16",
-    leafType: "concentric"
-  },
-  potato_late_blight: {
-    name: "Potato (Late Blight)",
-    symptoms: "Water-soaked dark lesions on leaf tips and margins with white fuzzy mold underneath during damp mornings.",
-    plant: "Potato",
-    svgColor: "#10b981",
-    leafType: "water_soaked"
-  },
-  corn_common_rust: {
-    name: "Corn / Maize (Common Rust)",
-    symptoms: "Small, circular to elongated cinnamon-brown pustules scattered over both upper and lower leaf surfaces.",
-    plant: "Corn",
-    svgColor: "#f59e0b",
-    leafType: "pustules"
-  },
-  apple_scab: {
-    name: "Apple (Apple Scab)",
-    symptoms: "Velvety olive-green to dark brown spots with irregular margins on leaves, causing premature yellowing.",
-    plant: "Apple",
-    svgColor: "#22c55e",
-    leafType: "olive_spots"
-  },
-  hindi_tomato_blight: {
-    name: "🌱 [हिंदी] टमाटर (अगेती झुलसा)",
-    symptoms: "टमाटर के निचले पत्तों पर भूरे और काले छल्ले जैसे धब्बे बन रहे हैं और पत्ते पीले होकर गिर रहे हैं।",
-    plant: "Tomato / टमाटर",
-    svgColor: "#ef4444",
-    leafType: "concentric"
-  },
-  hindi_potato_blight: {
-    name: "🌱 [हिंदी] आलू (पछेती झुलसा)",
-    symptoms: "आलू के पत्तों पर पानी से भीगे हुए काले धब्बे हैं और सुबह के समय पत्तों के नीचे सफेद ففूंद दिखती है।",
-    plant: "Potato / आलू",
-    svgColor: "#059669",
-    leafType: "water_soaked"
-  },
-  punjabi_tomato_blight: {
-    name: "🌾 [ਪੰਜਾਬੀ] ਟਮਾਟਰ (ਅਗੇਤੀ ਝੁਲਸਾ)",
-    symptoms: "ਟਮਾਟਰ ਦੇ ਹੇਠਲੇ ਪੱਤਿਆਂ ਉੱਤੇ ਭੂਰੇ ਅਤੇ ਕਾਲੇ ਛੱਲਿਆਂ ਵਰਗੇ ਧੱਬੇ ਬਣ ਰਹੇ ਹਨ ਅਤੇ ਪੱਤੇ ਪੀਲੇ ਹੋ ਕੇ ਡਿੱਗ ਰਹੇ ਹਨ।",
-    plant: "Tomato / ਟਮਾਟਰ",
-    svgColor: "#dc2626",
-    leafType: "concentric"
-  },
-  punjabi_potato_blight: {
-    name: "🌾 [ਪੰਜਾਬੀ] ਆਲੂ (ਪਿਛੇਤੀ ਝੁਲਸਾ)",
-    symptoms: "ਆਲੂ ਦੇ ਪੱਤਿਆਂ ਉੱਤੇ ਪਾਣੀ ਨਾਲ ਭਿੱਜੇ ਹੋਏ ਕਾਲੇ ਧੱਬੇ ਹਨ ਅਤੇ ਸਵੇਰੇ ਪੱਤਿਆਂ ਦੇ ਹੇਠਾਂ ਚਿੱਟੀ ਉੱਲੀ ਦਿਖਦੀ ਹੈ।",
-    plant: "Potato / ਆਲੂ",
-    svgColor: "#047857",
-    leafType: "water_soaked"
-  }
-};
+    // ── State ───────────────────────────────────────────────────────
+    let currentCaseId = null;
+    let selectedImageFile = null;
+    let recordedAudioBlob = null;
+    let currentLanguage = 'en';
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordTimerInterval = null;
+    let recordStartTime = 0;
+    let isProcessing = false;
+    let currentAudioPlayer = null;
 
-// DOM Elements
-const DOM = {
-  // Brand & Header
-  healthStatusPill: document.getElementById("health-status-pill"),
-  statusText: document.getElementById("status-text"),
-  statusDot: document.getElementById("status-dot"),
-  btnNewCase: document.getElementById("btn-new-case"),
-  btnAutoTts: document.getElementById("btn-auto-tts"),
-
-  // Visual Inputs
-  tabUpload: document.getElementById("tab-upload"),
-  tabCamera: document.getElementById("tab-camera"),
-  dropzone: document.getElementById("dropzone"),
-  fileInput: document.getElementById("file-input"),
-  cameraContainer: document.getElementById("camera-container"),
-  cameraVideo: document.getElementById("camera-video"),
-  btnSnap: document.getElementById("btn-snap"),
-  imagePreviewWrapper: document.getElementById("image-preview-wrapper"),
-  previewImg: document.getElementById("preview-img"),
-  previewFileName: document.getElementById("preview-file-name"),
-  btnClearImage: document.getElementById("btn-clear-image"),
-
-  // Voice Inputs
-  btnMic: document.getElementById("btn-mic"),
-  audioCanvas: document.getElementById("audio-canvas"),
-  audioStatusLabel: document.getElementById("audio-status-label"),
-
-  // Text Inputs & Submit
-  symptomInput: document.getElementById("symptom-input"),
-  btnSubmit: document.getElementById("btn-submit"),
-  submitSpinner: document.getElementById("submit-spinner"),
-  submitBtnText: document.getElementById("submit-btn-text"),
-  presetChipsContainer: document.getElementById("preset-chips-container"),
-
-  // Timeline / Feed
-  chatMessages: document.getElementById("chat-messages"),
-
-  // Prescription Card
-  prescriptionPanel: document.getElementById("prescription-panel"),
-  rxPlantName: document.getElementById("rx-plant-name"),
-  rxDiseaseName: document.getElementById("rx-disease-name"),
-  rxSeverityTag: document.getElementById("rx-severity-tag"),
-  rxConfidenceProgress: document.getElementById("rx-confidence-progress"),
-  rxConfidenceText: document.getElementById("rx-confidence-text"),
-  rxConfidenceStatus: document.getElementById("rx-confidence-status"),
-  rxCauseText: document.getElementById("rx-cause-text"),
-  rxSymptomsList: document.getElementById("rx-symptoms-list"),
-  rxOrganicList: document.getElementById("rx-organic-list"),
-  rxChemicalList: document.getElementById("rx-chemical-list"),
-  rxPreventionList: document.getElementById("rx-prevention-list"),
-  rxEvidenceList: document.getElementById("rx-evidence-list"),
-  btnSpeakRx: document.getElementById("btn-speak-rx"),
-  btnPrintRx: document.getElementById("btnPrintRx"),
-};
-
-// ==========================================================================
-// Initialization & Health Checks
-// ==========================================================================
-
-document.addEventListener("DOMContentLoaded", () => {
-  initHealthCheck();
-  initVisualInputs();
-  initVoiceRecorder();
-  initChatTimeline();
-  initPresets();
-  initActionButtons();
-  initTreatmentTabs();
-});
-
-async function initHealthCheck() {
-  try {
-    const res = await fetch(`${API_BASE}/api/health`);
-    if (res.ok) {
-      const data = await res.json();
-      DOM.statusText.textContent = "AI Doctor Online";
-      DOM.statusDot.style.backgroundColor = "var(--emerald-500)";
-      DOM.healthStatusPill.title = `FAISS Loaded: ${data.faiss_loaded}, Embeddings: ${data.embedding_model_loaded}, Chunks: ${data.knowledge_base_chunks}`;
-    } else {
-      DOM.statusText.textContent = "Service Limited";
-      DOM.statusDot.style.backgroundColor = "var(--amber-500)";
-    }
-  } catch (err) {
-    DOM.statusText.textContent = "Connecting to Backend...";
-    DOM.statusDot.style.backgroundColor = "var(--amber-500)";
-  }
-}
-
-// ==========================================================================
-// Visual Input & Camera Management (Upload or Take Photo)
-// ==========================================================================
-
-function initVisualInputs() {
-  // Tabs Switch
-  DOM.tabUpload.addEventListener("click", () => {
-    DOM.tabUpload.classList.add("active");
-    DOM.tabCamera.classList.remove("active");
-    DOM.dropzone.style.display = "block";
-    stopCamera();
-    DOM.cameraContainer.classList.remove("active");
-  });
-
-  DOM.tabCamera.addEventListener("click", async () => {
-    DOM.tabCamera.classList.add("active");
-    DOM.tabUpload.classList.remove("active");
-    DOM.dropzone.style.display = "none";
-    DOM.cameraContainer.classList.add("active");
-    await startCamera();
-  });
-
-  // Dropzone Events
-  DOM.dropzone.addEventListener("click", () => DOM.fileInput.click());
-  DOM.fileInput.addEventListener("change", (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleImageSelect(e.target.files[0]);
-    }
-  });
-
-  DOM.dropzone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    DOM.dropzone.classList.add("dragover");
-  });
-
-  DOM.dropzone.addEventListener("dragleave", () => {
-    DOM.dropzone.classList.remove("dragover");
-  });
-
-  DOM.dropzone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    DOM.dropzone.classList.remove("dragover");
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleImageSelect(e.dataTransfer.files[0]);
-    }
-  });
-
-  // Clear Image
-  DOM.btnClearImage.addEventListener("click", () => {
-    clearSelectedImage();
-  });
-
-  // Snap Photo from Camera
-  DOM.btnSnap.addEventListener("click", () => {
-    takeCameraSnapshot();
-  });
-}
-
-async function startCamera(facingMode = "environment") {
-  try {
-    if (AppState.cameraStream) {
-      stopCamera();
-    }
-    const constraints = {
-      video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    };
-    AppState.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-    DOM.cameraVideo.srcObject = AppState.cameraStream;
-    DOM.cameraVideo.play();
-  } catch (err) {
-    console.warn("Camera access denied or unavailable:", err);
-    alert("Camera access was not granted or is unsupported. Please upload a crop photo instead.");
-    DOM.tabUpload.click();
-  }
-}
-
-function stopCamera() {
-  if (AppState.cameraStream) {
-    AppState.cameraStream.getTracks().forEach(track => track.stop());
-    AppState.cameraStream = null;
-  }
-}
-
-function takeCameraSnapshot() {
-  if (!AppState.cameraStream) return;
-  const canvas = document.createElement("canvas");
-  canvas.width = DOM.cameraVideo.videoWidth || 640;
-  canvas.height = DOM.cameraVideo.videoHeight || 480;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(DOM.cameraVideo, 0, 0, canvas.width, canvas.height);
-
-  canvas.toBlob((blob) => {
-    if (blob) {
-      const file = new File([blob], `crop_snap_${Date.now()}.jpg`, { type: "image/jpeg" });
-      handleImageSelect(file);
-      stopCamera();
-      DOM.tabUpload.click();
-    }
-  }, "image/jpeg", 0.92);
-}
-
-function handleImageSelect(file) {
-  if (!file || !file.type.startsWith("image/")) {
-    alert("Please select a valid image file (JPEG, PNG, WEBP).");
-    return;
-  }
-  AppState.selectedImageFile = file;
-  DOM.previewFileName.textContent = file.name;
-
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    DOM.previewImg.src = e.target.result;
-    DOM.imagePreviewWrapper.classList.add("active");
-    DOM.dropzone.style.display = "none";
-  };
-  reader.readAsDataURL(file);
-}
-
-function clearSelectedImage() {
-  AppState.selectedImageFile = null;
-  DOM.previewImg.src = "";
-  DOM.fileInput.value = "";
-  DOM.imagePreviewWrapper.classList.remove("active");
-  DOM.dropzone.style.display = "block";
-}
-
-// ==========================================================================
-// Preset Sample Generation (SVG & Synthetic Plant Leaf Data)
-// ==========================================================================
-
-function initPresets() {
-  DOM.presetChipsContainer.innerHTML = "";
-  Object.keys(SamplePresets).forEach(key => {
-    const preset = SamplePresets[key];
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "preset-chip";
-    chip.innerHTML = `<span>🌿</span> ${preset.name}`;
-    chip.addEventListener("click", () => loadSamplePreset(key));
-    DOM.presetChipsContainer.appendChild(chip);
-  });
-}
-
-function loadSamplePreset(presetKey) {
-  const preset = SamplePresets[presetKey];
-  if (!preset) return;
-
-  DOM.symptomInput.value = preset.symptoms;
-  AppState.lastInputWasVoice = false; // Mark as text input
-
-  // Generate a high-contrast crop lesion canvas file
-  const canvas = document.createElement("canvas");
-  canvas.width = 600;
-  canvas.height = 450;
-  const ctx = canvas.getContext("2d");
-
-  // Background leaf blade gradient
-  const grad = ctx.createLinearGradient(0, 0, 600, 450);
-  grad.addColorStop(0, "#1b4d1b");
-  grad.addColorStop(0.5, preset.svgColor);
-  grad.addColorStop(1, "#163816");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 600, 450);
-
-  // Leaf veins
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(300, 450);
-  ctx.lineTo(300, 50);
-  ctx.stroke();
-
-  for (let y = 100; y < 400; y += 45) {
-    ctx.beginPath();
-    ctx.moveTo(300, y);
-    ctx.lineTo(100, y - 40);
-    ctx.moveTo(300, y);
-    ctx.lineTo(500, y - 40);
-    ctx.stroke();
-  }
-
-  // Draw characteristic pathology lesions
-  if (preset.leafType === "concentric") {
-    // Early Blight Target Rings
-    for (let i = 0; i < 4; i++) {
-      const cx = 200 + i * 70;
-      const cy = 180 + (i % 2) * 80;
-      for (let r = 35; r > 5; r -= 7) {
-        ctx.fillStyle = r % 14 === 0 ? "#451a03" : "#78350f";
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  } else if (preset.leafType === "pustules") {
-    // Rust Pustules
-    for (let i = 0; i < 60; i++) {
-      const px = 100 + Math.random() * 400;
-      const py = 80 + Math.random() * 300;
-      ctx.fillStyle = "#b45309";
-      ctx.beginPath();
-      ctx.ellipse(px, py, 6, 12, Math.PI / 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else {
-    // General necrotic blotches
-    for (let i = 0; i < 6; i++) {
-      const bx = 150 + Math.random() * 300;
-      const by = 100 + Math.random() * 250;
-      ctx.fillStyle = "#292524";
-      ctx.beginPath();
-      ctx.arc(bx, by, 30 + Math.random() * 25, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // Plant & Disease Watermark Badge
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillRect(20, 390, 320, 40);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 16px Outfit, sans-serif";
-  ctx.fillText(`Sample: ${preset.name}`, 30, 415);
-
-  canvas.toBlob((blob) => {
-    const sampleFile = new File([blob], `${presetKey}_sample.jpg`, { type: "image/jpeg" });
-    handleImageSelect(sampleFile);
-  }, "image/jpeg", 0.9);
-}
-
-// ==========================================================================
-// Voice Recording & Web Audio Visualizer
-// ==========================================================================
-
-function initVoiceRecorder() {
-  const canvas = DOM.audioCanvas;
-  const canvasCtx = canvas.getContext("2d");
-
-  // Draw idle visualizer line
-  function drawIdleLine() {
-    canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-    canvasCtx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-    canvasCtx.lineWidth = 2;
-    canvasCtx.beginPath();
-    canvasCtx.moveTo(0, canvas.height / 2);
-    canvasCtx.lineTo(canvas.width, canvas.height / 2);
-    canvasCtx.stroke();
-  }
-  drawIdleLine();
-
-  DOM.btnMic.addEventListener("click", async () => {
-    if (!AppState.isRecording) {
-      await startVoiceRecording();
-    } else {
-      await stopVoiceRecording();
-    }
-  });
-
-  // If user types directly in symptom box, set modality to text
-  DOM.symptomInput.addEventListener("input", () => {
-    if (DOM.symptomInput.value.trim().length > 0) {
-      // User is manually typing
-    }
-  });
-}
-
-async function startVoiceRecording() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    AppState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const source = AppState.audioContext.createMediaStreamSource(stream);
-    AppState.analyser = AppState.audioContext.createAnalyser();
-    AppState.analyser.fftSize = 256;
-    source.connect(AppState.analyser);
-
-    AppState.audioChunks = [];
-    AppState.mediaRecorder = new MediaRecorder(stream);
-
-    AppState.mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) AppState.audioChunks.push(e.data);
+    // ── Translations ────────────────────────────────────────────────
+    const TRANSLATIONS = {
+        en: {
+            welcome_title: "AI Crop Doctor",
+            welcome_subtitle: "Upload a crop photo, describe the problem, or speak to the Crop Doctor.",
+            cap_photo: "Crop photo analysis",
+            cap_text: "Symptom description",
+            cap_voice: "Voice diagnosis",
+            try_asking: "Try asking:",
+            input_placeholder: "Type your crop problem...",
+            recording: "Recording...",
+            voice_input: "Voice message",
+            analyzing_1: "Analyzing your crop image...",
+            analyzing_2: "Checking plant symptoms...",
+            analyzing_3: "Searching agricultural knowledge base...",
+            analyzing_4: "Formulating treatment recommendations...",
+            ready: "Ready",
+            busy: "Analyzing...",
+            offline: "Offline",
+            listen_audio: "Listen",
+            playing_audio: "Playing...",
+            stop_audio: "Stop",
+            crop: "Crop",
+            diagnosis: "Diagnosis",
+            confidence: "Confidence",
+            severity: "Severity",
+            symptoms: "Symptoms",
+            cause: "Cause / Pathogen",
+            organic_treatment: "Organic Treatment",
+            chemical_treatment: "Chemical Treatment",
+            prevention: "Prevention Practices",
+            evidence: "Grounded Agricultural Evidence",
+            healthy_title: "Plant Appears Healthy",
+            healthy_msg: "Great news! Your crop shows no clear signs of disease or severe deficiency. Continue with good agricultural practices.",
+            followup_title: "More Information Needed",
+            err_not_plant: "The uploaded image does not appear to be a crop or plant. Please upload a clear photo of the affected plant or leaves.",
+            err_network: "Could not connect to Crop Doctor. Please check your internet connection.",
+            err_server: "Crop Doctor service is temporarily unavailable. Please try again in a moment.",
+            err_unsupported_img: "Please select a valid image file (JPG, PNG, WEBP, BMP under 10MB)."
+        },
+        hi: {
+            welcome_title: "एआई फसल डॉक्टर",
+            welcome_subtitle: "फसल की फोटो अपलोड करें, समस्या बताएं, या बोलकर डॉक्टर से सलाह लें।",
+            cap_photo: "फोटो द्वारा रोग पहचान",
+            cap_text: "लक्षणों का विवरण",
+            cap_voice: "बोलकर सवाल पूछें",
+            try_asking: "ये पूछकर देखें:",
+            input_placeholder: "अपनी फसल की समस्या यहाँ लिखें...",
+            recording: "रिकॉर्डिंग हो रही है...",
+            voice_input: "आवाज़ संदेश",
+            analyzing_1: "फसल की तस्वीर की जांच हो रही है...",
+            analyzing_2: "पौधे के लक्षणों का मिलान किया जा रहा है...",
+            analyzing_3: "कृषि ज्ञानकोष से समाधान खोजा जा रहा है...",
+            analyzing_4: "उपचार और रोकथाम की सलाह तैयार हो रही है...",
+            ready: "तैयार",
+            busy: "जांच जारी...",
+            offline: "ऑफलाइन",
+            listen_audio: "सुनें",
+            playing_audio: "चल रहा है...",
+            stop_audio: "रोकें",
+            crop: "फसल",
+            diagnosis: "रोग की पहचान",
+            confidence: "सटीकता",
+            severity: "गंभीरता",
+            symptoms: "प्रमुख लक्षण",
+            cause: "रोग का कारण / रोगाणु",
+            organic_treatment: "जैविक / देशी उपचार",
+            chemical_treatment: "रासायनिक उपचार",
+            prevention: "बचाव के उपाय",
+            evidence: "प्रमाणित कृषि स्रोत",
+            healthy_title: "फसल स्वस्थ दिख रही है",
+            healthy_msg: "बधाई! आपकी फसल में किसी गंभीर रोग के लक्षण नहीं मिले हैं। सामान्य देखभाल जारी रखें।",
+            followup_title: "अतिरिक्त जानकारी की आवश्यकता है",
+            err_not_plant: "अपलोड की गई फोटो किसी फसल या पौधे की नहीं लग रही है। कृपया पत्ती या पौधे की स्पष्ट फोटो अपलोड करें।",
+            err_network: "फसल डॉक्टर से संपर्क नहीं हो सका। कृपया अपना इंटरनेट कनेक्शन जांचें।",
+            err_server: "सर्वर से संपर्क करने में समस्या हुई। कृपया कुछ समय बाद पुनः प्रयास करें।",
+            err_unsupported_img: "कृपया सही फोटो (JPG, PNG, WEBP) अपलोड करें।"
+        },
+        or: {
+            welcome_title: "AI ଫସଲ ଡାକ୍ତର",
+            welcome_subtitle: "ଫସଲର ଫଟୋ ଅପଲୋଡ୍ କରନ୍ତୁ, ସମସ୍ୟା ଲେଖନ୍ତୁ କିମ୍ବା କହି ସମାଧାନ ପାଆନ୍ତୁ।",
+            cap_photo: "ଫଟୋ ବିଶ୍ଳେଷଣ",
+            cap_text: "ଲକ୍ଷଣ ବର୍ଣ୍ଣନା",
+            cap_voice: "ସ୍ୱର ପରାମର୍ଶ",
+            try_asking: "ଉଦାହରଣ ପ୍ରଶ୍ନ:",
+            input_placeholder: "ଆପଣଙ୍କ ଫସଲ ସମସ୍ୟା ଲେଖନ୍ତୁ...",
+            recording: "ରେକର୍ଡିଂ ଚାଲିଛି...",
+            voice_input: "ସ୍ୱର ବାର୍ତ୍ତା",
+            analyzing_1: "ଫସଲ ଫଟୋ ପରୀକ୍ଷା କରାଯାଉଛି...",
+            analyzing_2: "ଲକ୍ଷଣ ଯାଞ୍ଚ ହେଉଛି...",
+            analyzing_3: "କୃଷି ବିଜ୍ଞାନ ତଥ୍ୟରୁ ଉତ୍ତର ଖୋଜାଯାଉଛି...",
+            analyzing_4: "ଉପଚାର ପରାମର୍ଶ ପ୍ରସ୍ତୁତ ହେଉଛି...",
+            ready: "ପ୍ରସ୍ତୁତ",
+            busy: "ପରୀକ୍ଷା ଚାଲିଛି...",
+            offline: "ଅଫଲାଇନ୍",
+            listen_audio: "ଶୁଣନ୍ତୁ",
+            playing_audio: "ଚାଲିଛି...",
+            stop_audio: "ବନ୍ଦ କରନ୍ତୁ",
+            crop: "ଫସଲ",
+            diagnosis: "ରୋଗ ନିର୍ଣ୍ଣୟ",
+            confidence: "ବିଶ୍ୱସନୀୟତା",
+            severity: "ତୀବ୍ରତା",
+            symptoms: "ମୁଖ୍ୟ ଲକ୍ଷଣ",
+            cause: "କାରଣ",
+            organic_treatment: "ଜୈବିକ ଉପଚାର",
+            chemical_treatment: "ରାସାୟନିକ ଉପଚାର",
+            prevention: "ପ୍ରତିରୋଧ ପଦକ୍ଷେପ",
+            evidence: "କୃଷି ପ୍ରମାଣ",
+            healthy_title: "ଗଛ ସୁସ୍ଥ ଦେଖାଯାଉଛି",
+            healthy_msg: "ଉତ୍ତମ ଖବର! ଆପଣଙ୍କ ଫସଲରେ କୌଣସି ରୋଗର ଲକ୍ଷଣ ଦେଖାଯାଉନାହିଁ।",
+            followup_title: "ଅଧିକ ସୂଚନା ଆବଶ୍ୟକ",
+            err_not_plant: "ଦୟାକରି ଏକ ଫସଲ କିମ୍ବା ପତ୍ରର ସ୍ପଷ୍ଟ ଫଟୋ ଅପଲୋଡ୍ କରନ୍ତୁ।",
+            err_network: "ସଂଯୋଗ ବିଫଳ ହେଲା। ଇଣ୍ଟରନେଟ୍ ଯାଞ୍ଚ କରନ୍ତୁ।",
+            err_server: "ଫସଲ ଡାକ୍ତର ସେବା ଅସ୍ଥାୟୀ ଭାବରେ ଅନୁପଲବ୍ଧ।",
+            err_unsupported_img: "ଦୟାକରି ବୈଧ ଫଟୋ ବାଛନ୍ତୁ।"
+        },
+        pa: {
+            welcome_title: "AI ਫ਼ਸਲ ਡਾਕਟਰ",
+            welcome_subtitle: "ਫ਼ਸਲ ਦੀ ਫੋਟੋ ਅਪਲੋਡ ਕਰੋ, ਸਮੱਸਿਆ ਲਿਖੋ, ਜਾਂ ਬੋਲ ਕੇ ਸਲਾਹ ਲਵੋ।",
+            cap_photo: "ਫੋਟੋ ਜਾਂਚ",
+            cap_text: "ਲੱਛਣਾਂ ਦਾ ਵੇਰਵਾ",
+            cap_voice: "ਬੋਲ ਕੇ ਪੁੱਛੋ",
+            try_asking: "ਇਹ ਪੁੱਛ ਕੇ ਵੇਖੋ:",
+            input_placeholder: "ਆਪਣੀ ਫ਼ਸਲ ਦੀ ਸਮੱਸਿਆ ਇੱਥੇ ਲਿਖੋ...",
+            recording: "ਰਿਕਾਰਡਿੰਗ ਹੋ ਰਹੀ ਹੈ...",
+            voice_input: "ਆਵਾਜ਼ ਸੁਨੇਹਾ",
+            analyzing_1: "ਫ਼ਸਲ ਦੀ ਫੋਟੋ ਦੀ ਜਾਂਚ ਹੋ ਰਹੀ ਹੈ...",
+            analyzing_2: "ਬਿਮਾਰੀ ਦੇ ਲੱਛਣ ਮਿਲਾਏ ਜਾ ਰਹੇ ਹਨ...",
+            analyzing_3: "ਖੇਤੀਬਾੜੀ ਗਿਆਨਕੋਸ਼ ਵਿੱਚੋਂ ਹੱਲ ਲੱਭਿਆ ਜਾ ਰਿਹਾ ਹੈ...",
+            analyzing_4: "ਇਲਾਜ ਦੀ ਸਲਾਹ ਤਿਆਰ ਹੋ ਰਹੀ ਹੈ...",
+            ready: "ਤਿਆਰ",
+            busy: "ਜਾਂਚ ਜਾਰੀ...",
+            offline: "ਆਫਲਾਈਨ",
+            listen_audio: "ਸੁਣੋ",
+            playing_audio: "ਚੱਲ ਰਿਹਾ ਹੈ...",
+            stop_audio: "ਰੋਕੋ",
+            crop: "ਫ਼ਸਲ",
+            diagnosis: "ਬਿਮਾਰੀ ਦੀ ਪਛਾਣ",
+            confidence: "ਸ਼ੁੱਧਤਾ",
+            severity: "ਗੰਭੀਰਤਾ",
+            symptoms: "ਮੁੱਖ ਲੱਛਣ",
+            cause: "ਕਾਰਨ",
+            organic_treatment: "ਜੈਵਿਕ ਇਲਾਜ",
+            chemical_treatment: "ਰਸਾਇਣਕ ਇਲਾਜ",
+            prevention: "ਬਚਾਅ ਦੇ ਉਪਾਅ",
+            evidence: "ਪ੍ਰਮਾਣਿਤ ਖੇਤੀਬਾੜੀ ਸਰੋਤ",
+            healthy_title: "ਫ਼ਸਲ ਤੰਦਰੁਸਤ ਹੈ",
+            healthy_msg: "ਵਧੀਆ ਗੱਲ ਹੈ! ਤੁਹਾਡੀ ਫ਼ਸਲ ਵਿੱਚ ਕੋਈ ਬਿਮਾਰੀ ਨਹੀਂ ਮਿਲੀ।",
+            followup_title: "ਹੋਰ ਜਾਣਕਾਰੀ ਦੀ ਲੋੜ ਹੈ",
+            err_not_plant: "ਕਿਰਪਾ ਕਰਕੇ ਕਿਸੇ ਫ਼ਸਲ ਜਾਂ ਪੱਤੇ ਦੀ ਸਾਫ਼ ਫੋਟੋ ਅਪਲੋਡ ਕਰੋ।",
+            err_network: "ਕਿਰਪਾ ਕਰਕੇ ਆਪਣਾ ਇੰਟਰਨੈੱਟ ਕਨੈਕਸ਼ਨ ਚੈੱਕ ਕਰੋ।",
+            err_server: "ਸੇਵਾ ਅਸਥਾਈ ਤੌਰ 'ਤੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।",
+            err_unsupported_img: "ਕਿਰਪਾ ਕਰਕੇ ਸਹੀ ਫੋਟੋ ਅਪਲੋਡ ਕਰੋ।"
+        }
     };
 
-    AppState.mediaRecorder.onstop = async () => {
-      AppState.audioBlob = new Blob(AppState.audioChunks, { type: "audio/wav" });
-      AppState.lastInputWasVoice = true; // Mark that user gave voice input!
-      stream.getTracks().forEach(t => t.stop());
-      cancelAnimationFrame(AppState.animationFrameId);
-      DOM.audioStatusLabel.textContent = "Transcribing with Groq Whisper...";
-
-      // Auto-transcribe preview
-      await autoTranscribeVoice(AppState.audioBlob);
-    };
-
-    AppState.mediaRecorder.start();
-    AppState.isRecording = true;
-    DOM.btnMic.classList.add("recording");
-    DOM.audioStatusLabel.textContent = "Listening... (Click mic when done)";
-    visualizeAudio();
-  } catch (err) {
-    console.error("Microphone access failed:", err);
-    alert("Microphone access could not be acquired. You can type symptoms in the text box.");
-  }
-}
-
-async function stopVoiceRecording() {
-  if (AppState.mediaRecorder && AppState.isRecording) {
-    AppState.mediaRecorder.stop();
-    AppState.isRecording = false;
-    DOM.btnMic.classList.remove("recording");
-  }
-}
-
-function visualizeAudio() {
-  const canvas = DOM.audioCanvas;
-  const canvasCtx = canvas.getContext("2d");
-  const bufferLength = AppState.analyser.frequencyBinCount;
-  const dataArray = new Uint8Array(bufferLength);
-
-  function renderFrame() {
-    if (!AppState.isRecording) return;
-    AppState.animationFrameId = requestAnimationFrame(renderFrame);
-
-    AppState.analyser.getByteFrequencyData(dataArray);
-
-    canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-    const barWidth = (canvas.width / bufferLength) * 2.5;
-    let x = 0;
-
-    for (let i = 0; i < bufferLength; i++) {
-      const barHeight = (dataArray[i] / 255) * (canvas.height - 4);
-      const grad = canvasCtx.createLinearGradient(0, canvas.height, 0, 0);
-      grad.addColorStop(0, "rgba(16, 185, 129, 0.8)");
-      grad.addColorStop(1, "rgba(59, 130, 246, 0.9)");
-
-      canvasCtx.fillStyle = grad;
-      canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-      x += barWidth + 1;
+    function t(key) {
+        return (TRANSLATIONS[currentLanguage] && TRANSLATIONS[currentLanguage][key]) ||
+               (TRANSLATIONS.en && TRANSLATIONS.en[key]) || key;
     }
-  }
-  renderFrame();
-}
 
-async function autoTranscribeVoice(audioBlob) {
-  try {
-    const formData = new FormData();
-    formData.append("audio", audioBlob, "voice_input.wav");
+    // ── DOM Elements ────────────────────────────────────────────────
+    const topNav = document.getElementById('topNav');
+    const statusText = document.getElementById('statusText');
+    const langBtn = document.getElementById('langBtn');
+    const langLabel = document.getElementById('langLabel');
+    const langSelector = document.getElementById('langSelector');
+    const langDropdown = document.getElementById('langDropdown');
+    const langOptions = document.querySelectorAll('.lang-option');
 
-    const res = await fetch(`${API_BASE}/api/voice/transcribe`, {
-      method: "POST",
-      body: formData
+    const chatContainer = document.getElementById('chatContainer');
+    const welcomeScreen = document.getElementById('welcomeScreen');
+    const welcomeSuggestions = document.getElementById('welcomeSuggestions');
+    const messagesList = document.getElementById('messagesList');
+
+    const imageInput = document.getElementById('imageInput');
+    const attachBtn = document.getElementById('attachBtn');
+    const messageInput = document.getElementById('messageInput');
+    const micBtn = document.getElementById('micBtn');
+    const sendBtn = document.getElementById('sendBtn');
+
+    const imagePreviewBar = document.getElementById('imagePreviewBar');
+    const imagePreviewImg = document.getElementById('imagePreviewImg');
+    const imageRemoveBtn = document.getElementById('imageRemoveBtn');
+
+    const recordingBar = document.getElementById('recordingBar');
+    const recTimer = document.getElementById('recTimer');
+    const recCancelBtn = document.getElementById('recCancelBtn');
+    const recStopBtn = document.getElementById('recStopBtn');
+
+    // ── Initialization ──────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+        setupEventListeners();
+        checkBackendHealth();
+        applyLanguage(currentLanguage);
+        autoResizeTextarea();
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data.text) {
-        DOM.symptomInput.value = (DOM.symptomInput.value ? DOM.symptomInput.value + " " : "") + data.text;
-        DOM.audioStatusLabel.textContent = `Heard: "${data.text.slice(0, 32)}..."`;
-      } else {
-        DOM.audioStatusLabel.textContent = "Voice message recorded (Click Send)";
-      }
-    } else {
-      DOM.audioStatusLabel.textContent = "Voice message recorded";
-    }
-  } catch (err) {
-    console.warn("STT error:", err);
-    DOM.audioStatusLabel.textContent = "Voice message recorded";
-  }
-}
-
-// ==========================================================================
-// Diagnostic Submission & Modality Matching
-// ==========================================================================
-
-function initChatTimeline() {
-  // Introductory greeting
-  addAgentMessage({
-    text: "Hello! I am your AI Crop Doctor. Upload or take a crop photo, type your symptoms, or speak into the microphone to diagnose plant diseases.",
-    actionStep: "Doctor Ready",
-    needsFollowup: false
-  });
-}
-
-function initActionButtons() {
-  DOM.btnSubmit.addEventListener("click", (e) => {
-    e.preventDefault();
-    submitDiagnosis();
-  });
-  // Allow pressing Enter (without Shift) to submit diagnosis
-  DOM.symptomInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      submitDiagnosis();
-    }
-  });
-
-  DOM.btnNewCase.addEventListener("click", () => {
-    if (confirm("Start a new crop diagnostic consultation?")) {
-      resetCase();
-    }
-  });
-
-  DOM.btnSpeakRx.addEventListener("click", () => {
-    if (AppState.currentDiagnosis) {
-      const speechSummary = `Diagnosis: ${AppState.currentDiagnosis.disease} in ${AppState.currentDiagnosis.plant_name}. Confidence is ${Math.round(AppState.currentDiagnosis.confidence * 100)} percent. Severity is ${AppState.currentDiagnosis.severity}. Treatment: ${AppState.currentDiagnosis.organic_treatment?.[0] || 'Prune affected leaves'}.`;
-      playSynthesizedAudio(speechSummary);
-    }
-  });
-}
-
-async function submitDiagnosis() {
-  const text = DOM.symptomInput.value.trim();
-  const image = AppState.selectedImageFile;
-  const audio = AppState.audioBlob;
-  const wasVoice = AppState.lastInputWasVoice;
-
-  if (!text && !image && !audio) {
-    alert("Please provide at least a crop photo, typed symptom description, or voice message.");
-    return;
-  }
-
-  // Display Farmer's message bubble
-  addFarmerMessage({
-    text: text || (wasVoice ? "🎙️ (Voice description recorded)" : "📷 (Crop photo attached)"),
-    imageUrl: image ? DOM.previewImg.src : null,
-    isVoice: wasVoice
-  });
-
-  // Clear inputs for next turn
-  DOM.symptomInput.value = "";
-  const attachedImage = image;
-  const attachedAudio = audio;
-  const submittedWasVoice = wasVoice;
-
-  clearSelectedImage();
-  AppState.audioBlob = null;
-  AppState.lastInputWasVoice = false; // Reset for next message
-  DOM.audioStatusLabel.textContent = "Mic ready";
-
-  // Lock Submit Button with Spinner
-  setLoadingState(true);
-
-  // Send request to FastAPI backend
-  try {
-    const formData = new FormData();
-    if (text) formData.append("text", text);
-    if (attachedImage) formData.append("image", attachedImage, attachedImage.name);
-    if (attachedAudio) formData.append("audio", attachedAudio, "farmer_audio.wav");
-    if (AppState.caseId) formData.append("case_id", AppState.caseId);
-
-    const response = await fetch(`${API_BASE}/api/diagnosis`, {
-      method: "POST",
-      body: formData
-    });
-
-    if (!response.ok) {
-      throw new Error(`Server returned HTTP ${response.status}`);
+    // ── Health Check ────────────────────────────────────────────────
+    async function checkBackendHealth() {
+        try {
+            const res = await fetch(`${API_BASE}/api/health`, { method: 'GET' });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    setStatus('ready');
+                } else {
+                    setStatus('ready');
+                }
+            } else {
+                setStatus('offline');
+            }
+        } catch {
+            setStatus('offline');
+        }
     }
 
-    const data = await response.json();
-    AppState.caseId = data.case_id || AppState.caseId;
-
-    // Render Agent response bubble
-    addAgentMessage({
-      text: data.response_text || "I have analyzed your crop symptoms and prepared recommendations.",
-      actionStep: data.diagnosis ? "Diagnosis Confirmed" : "Gathering Evidence",
-      needsFollowup: data.needs_followup,
-      followupQuestion: data.followup_question,
-      audioUrl: null
-    });
-
-    // ──────────────────────────────────────────────────────────────────────
-    // Dynamic Modality Rule:
-    // "Reply should be given in text if input is in text else speech"
-    // ──────────────────────────────────────────────────────────────────────
-    if (submittedWasVoice && data.response_text) {
-      // Input was voice -> Speak response aloud
-      playSynthesizedAudio(data.response_text);
+    function setStatus(state) {
+        const dot = document.querySelector('.status-dot');
+        if (state === 'ready') {
+            statusText.textContent = t('ready');
+            if (dot) dot.style.background = 'var(--brand-500)';
+        } else if (state === 'busy') {
+            statusText.textContent = t('busy');
+            if (dot) dot.style.background = 'var(--warning)';
+        } else {
+            statusText.textContent = t('offline');
+            if (dot) dot.style.background = 'var(--danger)';
+        }
     }
 
-    // Render Prescription Card if structured diagnosis is returned
-    if (data.diagnosis) {
-      AppState.currentDiagnosis = data.diagnosis;
-      renderPrescriptionCard(data.diagnosis);
+    // ── Event Listeners ─────────────────────────────────────────────
+    function setupEventListeners() {
+        // Language selector
+        langBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            langSelector.classList.toggle('open');
+        });
 
-      // If farmer spoke via voice, also read key diagnosis aloud
-      if (submittedWasVoice) {
-        const diagSpeech = `Identified ${data.diagnosis.disease} with ${Math.round(data.diagnosis.confidence * 100)} percent confidence.`;
-        setTimeout(() => playSynthesizedAudio(diagSpeech), 2000);
-      }
+        document.addEventListener('click', () => {
+            langSelector.classList.remove('open');
+        });
+
+        langOptions.forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const lang = opt.getAttribute('data-lang');
+                const label = opt.getAttribute('data-label');
+                selectLanguage(lang, label);
+                langSelector.classList.remove('open');
+            });
+        });
+
+        // Suggestion chips
+        welcomeSuggestions.addEventListener('click', (e) => {
+            const chip = e.target.closest('.suggestion-chip');
+            if (!chip) return;
+            const text = chip.getAttribute('data-text');
+            if (text) {
+                messageInput.value = text;
+                updateSendState();
+                handleSend();
+            }
+        });
+
+        // Image attachment
+        attachBtn.addEventListener('click', () => {
+            imageInput.click();
+        });
+
+        imageInput.addEventListener('change', handleImageSelect);
+        imageRemoveBtn.addEventListener('click', removeSelectedImage);
+
+        // Text input handling
+        messageInput.addEventListener('input', () => {
+            autoResizeTextarea();
+            updateSendState();
+        });
+
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!sendBtn.disabled && !isProcessing) {
+                    handleSend();
+                }
+            }
+        });
+
+        // Voice recording
+        micBtn.addEventListener('click', toggleRecording);
+        recCancelBtn.addEventListener('click', cancelRecording);
+        recStopBtn.addEventListener('click', stopRecording);
+
+        // Send submission
+        sendBtn.addEventListener('click', () => {
+            if (!sendBtn.disabled && !isProcessing) {
+                handleSend();
+            }
+        });
     }
 
-  } catch (err) {
-    console.error("Diagnosis request error:", err);
-    addAgentMessage({
-      text: `Unable to complete analysis: ${err.message}. Please check backend connection to ${API_BASE || window.location.origin}.`,
-      actionStep: "Error",
-      needsFollowup: false
-    });
-  } finally {
-    setLoadingState(false);
-  }
-}
+    // ── Language Handling ───────────────────────────────────────────
+    function selectLanguage(lang, label) {
+        currentLanguage = lang;
+        langLabel.textContent = label;
 
-function setLoadingState(isLoading) {
-  DOM.btnSubmit.disabled = isLoading;
-  DOM.submitSpinner.style.display = isLoading ? "inline-block" : "none";
-  DOM.submitBtnText.textContent = isLoading ? "AI Doctor Reasoning..." : "Send to Crop Doctor";
-}
+        langOptions.forEach(opt => {
+            if (opt.getAttribute('data-lang') === lang) {
+                opt.classList.add('active');
+            } else {
+                opt.classList.remove('active');
+            }
+        });
 
-function resetCase() {
-  AppState.caseId = null;
-  AppState.currentDiagnosis = null;
-  AppState.lastInputWasVoice = false;
-  clearSelectedImage();
-  DOM.symptomInput.value = "";
-  DOM.prescriptionPanel.classList.remove("active");
-  DOM.chatMessages.innerHTML = "";
-  initChatTimeline();
-}
-
-// ==========================================================================
-// Timeline Message Rendering
-// ==========================================================================
-
-function addFarmerMessage({ text, imageUrl, isVoice }) {
-  const row = document.createElement("div");
-  row.className = "message-row farmer";
-
-  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  let imageHtml = "";
-  if (imageUrl) {
-    imageHtml = `<div style="margin-bottom:0.5rem;border-radius:8px;overflow:hidden;max-height:160px;"><img src="${imageUrl}" style="width:100%;object-fit:cover;"></div>`;
-  }
-
-  const voiceBadge = isVoice ? `<span style="font-size:0.75rem;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:4px;margin-right:4px;">🎙️ Voice</span> ` : "";
-
-  row.innerHTML = `
-    <div class="avatar-circle farmer-av">👨‍🌾</div>
-    <div class="message-bubble">
-      ${imageHtml}
-      <div>${voiceBadge}${escapeHtml(text)}</div>
-      <div class="message-time">${timeStr}</div>
-    </div>
-  `;
-
-  DOM.chatMessages.appendChild(row);
-  scrollToBottom();
-}
-
-function addAgentMessage({ text, actionStep, needsFollowup, followupQuestion }) {
-  const row = document.createElement("div");
-  row.className = "message-row agent";
-
-  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  let actionPillHtml = "";
-  if (actionStep) {
-    actionPillHtml = `<div class="agent-step-pill"><span>⚡</span> ${escapeHtml(actionStep)}</div>`;
-  }
-
-  let followupHtml = "";
-  if (needsFollowup && followupQuestion) {
-    followupHtml = `
-      <div class="followup-box">
-        <div class="followup-box-title"><span>❓</span> Clarifying Follow-Up:</div>
-        <div class="followup-text">${escapeHtml(followupQuestion)}</div>
-        <div class="quick-reply-chips">
-          <button class="quick-reply-chip" onclick="applyQuickReply('Yes, only on lower leaves')">Yes, lower leaves</button>
-          <button class="quick-reply-chip" onclick="applyQuickReply('Appeared 3 days ago after rain')">After recent rain</button>
-          <button class="quick-reply-chip" onclick="applyQuickReply('Spreading rapidly to nearby plants')">Spreading fast</button>
-        </div>
-      </div>
-    `;
-  }
-
-  row.innerHTML = `
-    <div class="avatar-circle agent-av">🌾</div>
-    <div class="message-bubble">
-      ${actionPillHtml}
-      <div>${formatMarkdownish(text)}</div>
-      ${followupHtml}
-      <div class="audio-player-widget">
-        <button class="audio-play-btn" onclick="playSynthesizedAudio('${escapeForJs(text)}')">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <span class="audio-track-label">Click to listen (TTS Voice)</span>
-      </div>
-      <div class="message-time">${timeStr}</div>
-    </div>
-  `;
-
-  DOM.chatMessages.appendChild(row);
-  scrollToBottom();
-}
-
-window.applyQuickReply = function (text) {
-  DOM.symptomInput.value = text;
-  AppState.lastInputWasVoice = false;
-  submitDiagnosis();
-};
-
-function scrollToBottom() {
-  DOM.chatMessages.scrollTop = DOM.chatMessages.scrollHeight;
-}
-
-// ==========================================================================
-// Speech Synthesis (Groq Orpheus / Web Speech Fallback)
-// ==========================================================================
-
-async function playSynthesizedAudio(text) {
-  if (!text) return;
-  try {
-    const formData = new FormData();
-    formData.append("text", text);
-
-    const res = await fetch(`${API_BASE}/api/voice/synthesize`, {
-      method: "POST",
-      body: formData
-    });
-
-    if (res.ok && res.headers.get("X-TTS-Failed") !== "true") {
-      const blob = await res.blob();
-      if (blob.size > 100) {
-        const audioUrl = URL.createObjectURL(blob);
-        const audio = new Audio(audioUrl);
-        audio.play();
-        return;
-      }
+        applyLanguage(lang);
     }
-  } catch (e) {
-    console.warn("Groq TTS synthesis error, using browser speech synthesis:", e);
-  }
 
-  // Browser Web Speech API fallback
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text.replace(/[*#]/g, ''));
-    utterance.rate = 1.0;
-    window.speechSynthesis.speak(utterance);
-  }
-}
+    function applyLanguage(lang) {
+        // Update all data-i18n elements
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            el.textContent = t(key);
+        });
 
-// ==========================================================================
-// Confidence-Aware Prescription Card Rendering
-// ==========================================================================
+        // Update placeholders
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            const key = el.getAttribute('data-i18n-placeholder');
+            el.setAttribute('placeholder', t(key));
+        });
 
-function renderPrescriptionCard(dx) {
-  DOM.prescriptionPanel.classList.add("active");
+        // Update status text if not busy
+        if (!isProcessing) {
+            statusText.textContent = t('ready');
+        }
+    }
 
-  DOM.rxPlantName.textContent = dx.plant_name ? `Plant: ${dx.plant_name}` : "Crop Specimen Identified";
-  DOM.rxDiseaseName.textContent = dx.disease || "Pathology Assessment";
+    // ── Textarea Auto-resize ────────────────────────────────────────
+    function autoResizeTextarea() {
+        messageInput.style.height = 'auto';
+        const newHeight = Math.min(messageInput.scrollHeight, 120);
+        messageInput.style.height = `${newHeight}px`;
+    }
 
-  // Severity
-  const sev = (dx.severity || "moderate").toLowerCase();
-  DOM.rxSeverityTag.className = `severity-tag ${sev}`;
-  DOM.rxSeverityTag.textContent = sev.toUpperCase();
+    // ── Input State & Validation ────────────────────────────────────
+    function updateSendState() {
+        const hasText = messageInput.value.trim().length > 0;
+        const hasImage = !!selectedImageFile;
+        const hasAudio = !!recordedAudioBlob;
 
-  // Confidence Gauge
-  const confVal = Math.min(Math.max(dx.confidence || 0.85, 0), 1);
-  const confPct = Math.round(confVal * 100);
-  DOM.rxConfidenceText.textContent = `${confPct}%`;
+        if ((hasText || hasImage || hasAudio) && !isProcessing) {
+            sendBtn.removeAttribute('disabled');
+            sendBtn.classList.add('active');
+        } else {
+            sendBtn.setAttribute('disabled', 'true');
+            sendBtn.classList.remove('active');
+        }
+    }
 
-  const circumference = 2 * Math.PI * 18; // r = 18
-  const offset = circumference - (confVal * circumference);
-  DOM.rxConfidenceProgress.style.strokeDasharray = `${circumference}`;
-  DOM.rxConfidenceProgress.style.strokeDashoffset = `${offset}`;
+    // ── Image Handling ──────────────────────────────────────────────
+    function handleImageSelect(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
 
-  if (confPct >= 80) {
-    DOM.rxConfidenceProgress.style.stroke = "var(--emerald-500)";
-    DOM.rxConfidenceStatus.textContent = "High Confidence";
-    DOM.rxConfidenceStatus.style.color = "var(--emerald-400)";
-  } else if (confPct >= 60) {
-    DOM.rxConfidenceProgress.style.stroke = "var(--amber-500)";
-    DOM.rxConfidenceStatus.textContent = "Moderate Confidence";
-    DOM.rxConfidenceStatus.style.color = "var(--amber-500)";
-  } else {
-    DOM.rxConfidenceProgress.style.stroke = "var(--rose-500)";
-    DOM.rxConfidenceStatus.textContent = "Uncertain (Escalated)";
-    DOM.rxConfidenceStatus.style.color = "var(--rose-500)";
-  }
+        // Size check (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            alert(t('err_unsupported_img'));
+            imageInput.value = '';
+            return;
+        }
 
-  // Cause
-  DOM.rxCauseText.textContent = dx.cause || "Identified through pathognomonic visual cues and agronomic RAG retrieval.";
+        selectedImageFile = file;
 
-  // Symptoms
-  renderList(DOM.rxSymptomsList, dx.symptoms, "symptom");
+        // Display preview
+        const reader = new FileReader();
+        reader.onload = (loadEvt) => {
+            imagePreviewImg.src = loadEvt.target.result;
+            imagePreviewBar.classList.add('visible');
+            attachBtn.classList.add('has-image');
+            updateSendState();
+            messageInput.focus();
+        };
+        reader.readAsDataURL(file);
+    }
 
-  // Organic Treatments
-  renderList(DOM.rxOrganicList, dx.organic_treatment, "organic");
+    function removeSelectedImage() {
+        selectedImageFile = null;
+        imageInput.value = '';
+        imagePreviewImg.src = '';
+        imagePreviewBar.classList.remove('visible');
+        attachBtn.classList.remove('has-image');
+        updateSendState();
+    }
 
-  // Chemical Treatments
-  renderList(DOM.rxChemicalList, dx.chemical_treatment, "chemical");
+    // ── Real Voice Recording via MediaRecorder ──────────────────────
+    async function toggleRecording() {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            stopRecording();
+        } else {
+            startRecording();
+        }
+    }
 
-  // Prevention
-  renderList(DOM.rxPreventionList, dx.prevention, "prevention");
+    async function startRecording() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioChunks = [];
 
-  // Evidence Sources
-  renderList(DOM.rxEvidenceList, dx.evidence_sources, "evidence");
+            // Select supported mimeType
+            let mimeType = 'audio/webm';
+            if (!MediaRecorder.isTypeSupported('audio/webm')) {
+                if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                    mimeType = 'audio/mp4';
+                } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+                    mimeType = 'audio/ogg';
+                } else {
+                    mimeType = '';
+                }
+            }
 
-  // Scroll to prescription
-  DOM.prescriptionPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-}
+            mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
 
-function renderList(container, items, type) {
-  container.innerHTML = "";
-  if (!items || items.length === 0) {
-    const li = document.createElement("li");
-    li.className = "treatment-item";
-    li.innerHTML = `<span style="color:var(--text-muted);">No specific ${type} protocols specified.</span>`;
-    container.appendChild(li);
-    return;
-  }
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                    audioChunks.push(e.data);
+                }
+            };
 
-  items.forEach((item, idx) => {
-    const li = document.createElement("li");
-    li.className = "treatment-item";
-    let bulletClass = type;
-    li.innerHTML = `
-      <span class="treatment-bullet ${bulletClass}">${idx + 1}</span>
-      <span>${escapeHtml(item)}</span>
-    `;
-    container.appendChild(li);
-  });
-}
+            mediaRecorder.onstop = () => {
+                const finalType = mediaRecorder.mimeType || 'audio/webm';
+                recordedAudioBlob = new Blob(audioChunks, { type: finalType });
+                stream.getTracks().forEach(track => track.stop());
+                clearInterval(recordTimerInterval);
+                recordingBar.classList.remove('visible');
+                micBtn.classList.remove('recording');
 
-function initTreatmentTabs() {
-  const tabs = document.querySelectorAll(".treat-tab");
-  const sections = document.querySelectorAll(".treatment-card-section");
+                // Transcribe audio using backend STT to show immediate preview text if textarea empty
+                transcribeAndSetText(recordedAudioBlob);
+                updateSendState();
+            };
 
-  tabs.forEach(tab => {
-    tab.addEventListener("click", () => {
-      tabs.forEach(t => t.classList.remove("active"));
-      sections.forEach(s => s.classList.remove("active"));
+            mediaRecorder.start(250);
+            recordStartTime = Date.now();
+            updateTimerDisplay();
+            recordTimerInterval = setInterval(updateTimerDisplay, 500);
 
-      tab.classList.add("active");
-      const targetId = tab.getAttribute("data-target");
-      const targetSection = document.getElementById(targetId);
-      if (targetSection) {
-        targetSection.classList.add("active");
-      }
-    });
-  });
-}
+            recordingBar.classList.add('visible');
+            micBtn.classList.add('recording');
 
-// ==========================================================================
-// Helpers & Utilities
-// ==========================================================================
+        } catch (err) {
+            console.error('Microphone access denied or error:', err);
+            alert("Microphone permission is required to record voice symptoms.");
+        }
+    }
 
-function escapeHtml(str) {
-  if (!str) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+    function updateTimerDisplay() {
+        const elapsedSec = Math.floor((Date.now() - recordStartTime) / 1000);
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        recTimer.textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
 
-function escapeForJs(str) {
-  if (!str) return "";
-  return String(str).replace(/'/g, "\\'").replace(/\n/g, " ");
-}
+    function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+    }
 
-function formatMarkdownish(text) {
-  if (!text) return "";
-  let formatted = escapeHtml(text);
-  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  formatted = formatted.replace(/\n\n/g, '<br><br>');
-  formatted = formatted.replace(/\n/g, '<br>');
-  return formatted;
-}
+    function cancelRecording() {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.onstop = () => {
+                const stream = mediaRecorder.stream;
+                if (stream) stream.getTracks().forEach(track => track.stop());
+                clearInterval(recordTimerInterval);
+                recordingBar.classList.remove('visible');
+                micBtn.classList.remove('recording');
+                recordedAudioBlob = null;
+                audioChunks = [];
+                updateSendState();
+            };
+            mediaRecorder.stop();
+        } else {
+            recordingBar.classList.remove('visible');
+            micBtn.classList.remove('recording');
+            recordedAudioBlob = null;
+            audioChunks = [];
+            updateSendState();
+        }
+    }
+
+    async function transcribeAndSetText(blob) {
+        try {
+            const formData = new FormData();
+            const ext = blob.type.includes('mp4') ? 'mp4' : (blob.type.includes('ogg') ? 'ogg' : 'webm');
+            formData.append('audio', blob, `voice_input.${ext}`);
+
+            const res = await fetch(`${API_BASE}/api/voice/transcribe`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.text && !messageInput.value.trim()) {
+                    messageInput.value = data.text;
+                    autoResizeTextarea();
+                    updateSendState();
+                }
+            }
+        } catch (e) {
+            console.warn("Background transcription error:", e);
+        }
+    }
+
+    // ── Send & Submission Flow ──────────────────────────────────────
+    async function handleSend() {
+        const userText = messageInput.value.trim();
+        const imageFile = selectedImageFile;
+        const audioBlob = recordedAudioBlob;
+
+        if (!userText && !imageFile && !audioBlob) return;
+
+        // Hide welcome screen, show messages list
+        welcomeScreen.classList.add('hidden');
+        messagesList.classList.add('active');
+
+        // Render user message card
+        renderUserMessage({
+            text: userText,
+            imageFile: imageFile,
+            hasVoice: !!audioBlob
+        });
+
+        // Clear composer state immediately
+        messageInput.value = '';
+        autoResizeTextarea();
+        removeSelectedImage();
+        recordedAudioBlob = null;
+        updateSendState();
+
+        // Lock interface & show animated loading step
+        isProcessing = true;
+        setStatus('busy');
+        const loadingCard = showLoadingIndicator();
+        scrollToBottom();
+
+        try {
+            // Construct multipart/form-data for /api/diagnosis
+            const formData = new FormData();
+
+            if (imageFile) {
+                formData.append('image', imageFile, imageFile.name);
+            }
+            if (userText) {
+                formData.append('text', userText);
+            }
+            if (audioBlob) {
+                const ext = audioBlob.type.includes('mp4') ? 'mp4' : (audioBlob.type.includes('ogg') ? 'ogg' : 'webm');
+                formData.append('audio', audioBlob, `speech.${ext}`);
+            }
+            if (currentCaseId) {
+                formData.append('case_id', currentCaseId);
+            }
+
+            // Notice: We NEVER set Content-Type header manually; fetch sets multipart boundary automatically!
+            const res = await fetch(`${API_BASE}/api/diagnosis`, {
+                method: 'POST',
+                body: formData
+            });
+
+            removeLoadingIndicator(loadingCard);
+
+            if (!res.ok) {
+                renderErrorCard(t('err_server'));
+                return;
+            }
+
+            const data = await res.json();
+
+            // Track conversation case_id
+            if (data.case_id) {
+                currentCaseId = data.case_id;
+            }
+
+            // Render AI diagnosis response
+            renderAiMessage(data);
+
+        } catch (err) {
+            console.error('Diagnosis request error:', err);
+            removeLoadingIndicator(loadingCard);
+            renderErrorCard(t('err_network'));
+        } finally {
+            isProcessing = false;
+            setStatus('ready');
+            updateSendState();
+            scrollToBottom();
+        }
+    }
+
+    // ── Message Renderers ───────────────────────────────────────────
+    function renderUserMessage({ text, imageFile, hasVoice }) {
+        const tmpl = document.getElementById('tmplUserMsg');
+        const clone = tmpl.content.cloneNode(true);
+
+        const imgContainer = clone.querySelector('[data-slot="userImage"]');
+        const textContainer = clone.querySelector('[data-slot="userText"]');
+        const voiceBadge = clone.querySelector('[data-slot="voiceBadge"]');
+
+        if (imageFile) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(imageFile);
+            img.alt = "Uploaded crop";
+            imgContainer.appendChild(img);
+            imgContainer.classList.add('has-image');
+        }
+
+        if (text) {
+            textContainer.textContent = text;
+        } else if (!imageFile && hasVoice) {
+            textContainer.textContent = t('voice_input');
+        }
+
+        if (hasVoice) {
+            voiceBadge.classList.add('visible');
+        }
+
+        messagesList.appendChild(clone);
+    }
+
+    function showLoadingIndicator() {
+        const tmpl = document.getElementById('tmplLoading');
+        const clone = tmpl.content.cloneNode(true);
+        const node = clone.querySelector('.msg-loading');
+        messagesList.appendChild(clone);
+
+        // Cycle through friendly status messages
+        const textEl = node.querySelector('#loadingText');
+        const stages = [t('analyzing_1'), t('analyzing_2'), t('analyzing_3'), t('analyzing_4')];
+        let idx = 0;
+        const interval = setInterval(() => {
+            idx = (idx + 1) % stages.length;
+            if (textEl) textEl.textContent = stages[idx];
+        }, 1500);
+
+        node._interval = interval;
+        return node;
+    }
+
+    function removeLoadingIndicator(node) {
+        if (node) {
+            if (node._interval) clearInterval(node._interval);
+            node.remove();
+        }
+    }
+
+    function renderAiMessage(data) {
+        const tmpl = document.getElementById('tmplAiMsg');
+        const clone = tmpl.content.cloneNode(true);
+        const contentBox = clone.querySelector('[data-slot="aiContent"]');
+
+        const { response_text, diagnosis, needs_followup, followup_question, confidence } = data;
+
+        // 1. Conversational Response Text
+        if (response_text) {
+            const textDiv = document.createElement('div');
+            textDiv.className = 'ai-response-text';
+            textDiv.textContent = response_text;
+            contentBox.appendChild(textDiv);
+        }
+
+        // 2. TTS Voice Playback Button
+        if (response_text && response_text.length > 5) {
+            const ttsBtn = document.createElement('button');
+            ttsBtn.className = 'tts-play-btn';
+            ttsBtn.innerHTML = `<i class="bi bi-volume-up"></i> <span>${t('listen_audio')}</span>`;
+            ttsBtn.addEventListener('click', () => handleTtsPlayback(response_text, ttsBtn));
+            contentBox.appendChild(ttsBtn);
+        }
+
+        // 3. Check for specific conditions
+        if (needs_followup && followup_question) {
+            // Follow-up required state
+            const fCard = document.createElement('div');
+            fCard.className = 'followup-card';
+            fCard.innerHTML = `
+                <div class="followup-title"><i class="bi bi-question-circle-fill"></i> ${t('followup_title')}</div>
+                <div class="followup-question">${escapeHtml(followup_question)}</div>
+            `;
+            contentBox.appendChild(fCard);
+
+        } else if (diagnosis) {
+            const isHealthy = (diagnosis.disease && diagnosis.disease.toLowerCase().includes('healthy'));
+
+            if (isHealthy) {
+                // Healthy Plant State
+                const hCard = document.createElement('div');
+                hCard.className = 'healthy-card';
+                hCard.innerHTML = `
+                    <div class="healthy-icon"><i class="bi bi-check-circle-fill"></i></div>
+                    <div class="healthy-title">${t('healthy_title')}</div>
+                    <div class="healthy-text">${t('healthy_msg')}</div>
+                `;
+                contentBox.appendChild(hCard);
+
+            } else {
+                // Full Structured Diagnosis Card
+                const dCard = buildDiagnosisCard(diagnosis, confidence);
+                contentBox.appendChild(dCard);
+            }
+        }
+
+        messagesList.appendChild(clone);
+    }
+
+    function buildDiagnosisCard(diag, confidenceScore) {
+        const card = document.createElement('div');
+        card.className = 'diagnosis-card';
+
+        const confVal = Math.round(((diag.confidence || confidenceScore || 0)) * 100);
+        let confClass = 'diag-badge-confidence';
+        let fillClass = 'confidence-fill';
+        if (confVal < 60) {
+            confClass += ' low';
+            fillClass += ' low';
+        } else if (confVal < 80) {
+            confClass += ' medium';
+            fillClass += ' medium';
+        }
+
+        const severity = (diag.severity || 'Moderate').toLowerCase();
+        let sevClass = `diag-badge-severity ${severity}`;
+
+        // Header
+        let html = `
+            <div class="diag-header">
+                <div class="diag-header-left">
+                    <span class="diag-plant"><i class="bi bi-flower2"></i> ${escapeHtml(diag.plant_name || 'Crop')}</span>
+                    <span class="diag-disease">${escapeHtml(diag.disease || 'Plant Condition')}</span>
+                </div>
+                <div class="diag-badges">
+                    <span class="diag-badge ${confClass}"><i class="bi bi-shield-check"></i> ${confVal}% ${t('confidence')}</span>
+                    ${diag.severity ? `<span class="diag-badge ${sevClass}"><i class="bi bi-exclamation-triangle"></i> ${escapeHtml(diag.severity)}</span>` : ''}
+                </div>
+            </div>
+            <div class="confidence-bar-wrap">
+                <div class="confidence-bar-label">
+                    <span>${t('confidence')}</span>
+                    <span>${confVal}%</span>
+                </div>
+                <div class="confidence-bar">
+                    <div class="${fillClass}" style="width: ${confVal}%"></div>
+                </div>
+            </div>
+            <div class="diag-sections">
+        `;
+
+        // Cause / Pathogen
+        if (diag.cause) {
+            html += `
+                <div class="diag-section">
+                    <div class="diag-section-title"><i class="bi bi-bug"></i> ${t('cause')}</div>
+                    <div class="diag-cause">${escapeHtml(diag.cause)}</div>
+                </div>
+            `;
+        }
+
+        // Symptoms
+        if (diag.symptoms && diag.symptoms.length > 0) {
+            html += `
+                <div class="diag-section">
+                    <div class="diag-section-title"><i class="bi bi-card-checklist"></i> ${t('symptoms')}</div>
+                    <ul class="diag-list">
+                        ${diag.symptoms.map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // Organic Treatment
+        if (diag.organic_treatment && diag.organic_treatment.length > 0) {
+            html += `
+                <div class="diag-section">
+                    <div class="diag-section-title"><i class="bi bi-tree"></i> ${t('organic_treatment')}</div>
+                    <ul class="diag-list">
+                        ${diag.organic_treatment.map(o => `<li>${escapeHtml(o)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // Chemical Treatment
+        if (diag.chemical_treatment && diag.chemical_treatment.length > 0) {
+            html += `
+                <div class="diag-section">
+                    <div class="diag-section-title"><i class="bi bi-capsule"></i> ${t('chemical_treatment')}</div>
+                    <ul class="diag-list">
+                        ${diag.chemical_treatment.map(c => `<li>${escapeHtml(c)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // Prevention
+        if (diag.prevention && diag.prevention.length > 0) {
+            html += `
+                <div class="diag-section">
+                    <div class="diag-section-title"><i class="bi bi-shield-plus"></i> ${t('prevention')}</div>
+                    <ul class="diag-list">
+                        ${diag.prevention.map(p => `<li>${escapeHtml(p)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // Evidence Sources from Supabase pgvector RAG
+        if (diag.evidence_sources && diag.evidence_sources.length > 0) {
+            html += `
+                <div class="diag-section">
+                    <div class="diag-section-title"><i class="bi bi-journal-bookmark"></i> ${t('evidence')}</div>
+                    <ul class="diag-list evidence-list">
+                        ${diag.evidence_sources.map(e => `<li><i class="bi bi-file-earmark-text"></i> ${escapeHtml(e)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+        card.innerHTML = html;
+        return card;
+    }
+
+    function renderErrorCard(message) {
+        const tmpl = document.getElementById('tmplAiMsg');
+        const clone = tmpl.content.cloneNode(true);
+        const contentBox = clone.querySelector('[data-slot="aiContent"]');
+
+        const errDiv = document.createElement('div');
+        errDiv.className = 'error-card';
+        errDiv.innerHTML = `
+            <div class="error-title"><i class="bi bi-exclamation-octagon-fill"></i> ${t('welcome_title')}</div>
+            <div class="error-text">${escapeHtml(message)}</div>
+        `;
+
+        contentBox.appendChild(errDiv);
+        messagesList.appendChild(clone);
+    }
+
+    // ── TTS Synthesis & Audio Playback ──────────────────────────────
+    async function handleTtsPlayback(text, btn) {
+        if (currentAudioPlayer) {
+            currentAudioPlayer.pause();
+            currentAudioPlayer = null;
+            document.querySelectorAll('.tts-play-btn').forEach(b => {
+                b.classList.remove('playing');
+                b.innerHTML = `<i class="bi bi-volume-up"></i> <span>${t('listen_audio')}</span>`;
+            });
+            return;
+        }
+
+        btn.classList.add('playing');
+        btn.innerHTML = `<i class="bi bi-stop-circle"></i> <span>${t('playing_audio')}</span>`;
+
+        try {
+            const formData = new FormData();
+            formData.append('text', text);
+
+            const res = await fetch(`${API_BASE}/api/voice/synthesize`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!res.ok || res.headers.get('X-TTS-Failed') === 'true') {
+                // Fallback to browser SpeechSynthesis API if backend TTS unavailable
+                speakWithBrowser(text, btn);
+                return;
+            }
+
+            const audioBlob = await res.blob();
+            if (audioBlob.size < 100) {
+                speakWithBrowser(text, btn);
+                return;
+            }
+
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            currentAudioPlayer = audio;
+
+            audio.onended = () => {
+                btn.classList.remove('playing');
+                btn.innerHTML = `<i class="bi bi-volume-up"></i> <span>${t('listen_audio')}</span>`;
+                currentAudioPlayer = null;
+            };
+
+            audio.onerror = () => {
+                speakWithBrowser(text, btn);
+            };
+
+            await audio.play();
+
+        } catch (e) {
+            console.warn("Backend TTS failed, using browser synthesis fallback:", e);
+            speakWithBrowser(text, btn);
+        }
+    }
+
+    function speakWithBrowser(text, btn) {
+        if (!('speechSynthesis' in window)) {
+            btn.classList.remove('playing');
+            btn.innerHTML = `<i class="bi bi-volume-up"></i> <span>${t('listen_audio')}</span>`;
+            return;
+        }
+
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        if (currentLanguage === 'hi') utterance.lang = 'hi-IN';
+        else if (currentLanguage === 'pa') utterance.lang = 'pa-IN';
+        else utterance.lang = 'en-US';
+
+        utterance.onend = () => {
+            btn.classList.remove('playing');
+            btn.innerHTML = `<i class="bi bi-volume-up"></i> <span>${t('listen_audio')}</span>`;
+            currentAudioPlayer = null;
+        };
+
+        utterance.onerror = () => {
+            btn.classList.remove('playing');
+            btn.innerHTML = `<i class="bi bi-volume-up"></i> <span>${t('listen_audio')}</span>`;
+            currentAudioPlayer = null;
+        };
+
+        window.speechSynthesis.speak(utterance);
+    }
+
+    // ── Utilities ───────────────────────────────────────────────────
+    function scrollToBottom() {
+        requestAnimationFrame(() => {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+})();
