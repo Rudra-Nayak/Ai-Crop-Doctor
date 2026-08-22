@@ -19,6 +19,10 @@ CREATE INDEX IF NOT EXISTS documents_embedding_hnsw_idx
 ON public.documents 
 USING hnsw (embedding vector_cosine_ops);
 
+-- Enable full read/write access for documents and diagnostic_cases
+ALTER TABLE public.documents DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.diagnostic_cases DISABLE ROW LEVEL SECURITY;
+
 -- 3. Fast Vector Match Function for RAG Queries
 CREATE OR REPLACE FUNCTION public.match_documents (
     query_embedding vector(384),
