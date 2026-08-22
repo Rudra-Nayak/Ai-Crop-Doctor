@@ -8,6 +8,7 @@ autonomous reasoning about what evidence to gather next.
 from __future__ import annotations
 
 import json
+import os
 import logging
 from typing import Any
 
@@ -152,15 +153,27 @@ class DiagnosticAgent:
                 v_res = await self._vision_service.analyze_image(image_path)
                 vision_context = json.dumps(v_res, indent=2)
 
-            # Gather RAG knowledge
-            search_query = f"{user_message} {vision_context[:200]}".strip()
-            rag_docs = await self._rag_service.query(search_query)
-            rag_context = self._rag_service.format_results_for_agent(rag_docs)
+            # Gather RAG knowledge safely
+            rag_context = "No RAG matches."
+            try:
+                search_query = f"{user_message} {vision_context[:200]}".strip()
+                rag_docs = await self._rag_service.query(search_query)
+                if rag_docs:
+                    rag_context = self._rag_service.format_results_for_agent(rag_docs)
+            except Exception as rag_err:
+                logger.warning("RAG retrieval skipped due to error: %s", rag_err)
 
             system_prompt = (
-                "You are an expert AI Crop Doctor and plant pathologist. "
-                "Analyze the farmer's crop condition using the provided image analysis, "
-                "symptoms, conversation history, and agricultural knowledge base.\n\n"
+                "You are an expert AI Crop Doctor and plant pathologist with 20 years of field experience. "
+                "Analyze the farmer's crop condition using the provided image analysis, symptoms, "
+                "conversation history, and agricultural knowledge base.\n\n"
+                "Language Guidelines:\n"
+                "- If the farmer communicates or writes in Hindi (हिंदी) or Hinglish, provide 'response_text', "
+                "'organic_treatment', 'chemical_treatment', 'prevention', and 'symptoms' in clear, empathetic Hindi (Devanagari script).\n"
+                "- If the farmer communicates or writes in Punjabi (ਪੰਜਾਬੀ), provide 'response_text', "
+                "'organic_treatment', 'chemical_treatment', 'prevention', and 'symptoms' in clear, empathetic Punjabi (Gurmukhi script).\n"
+                "- For 'plant_name' and 'disease', include bilingual names (e.g. 'आलू (Potato)' / 'ਆਲੂ (Potato)' and 'पछेती झुलसा (Late Blight)' / 'ਪਿਛੇਤੀ ਝੁਲਸਾ (Late Blight)').\n"
+                "- If the farmer communicates in English, provide all fields in English.\n\n"
                 "Instructions:\n"
                 "1. If evidence is sufficient (confidence >= 70%), return a full diagnosis JSON.\n"
                 "2. If more info is needed, ask a specific follow-up question.\n\n"
@@ -330,6 +343,15 @@ class DiagnosticAgent:
                     except json.JSONDecodeError:
                         start = -1
                         continue
+
+        # Use json_repair as a resilient fallback
+        try:
+            import json_repair
+            repaired = json_repair.loads(cleaned)
+            if isinstance(repaired, dict):
+                return repaired
+        except Exception:
+            pass
 
         return None
 

@@ -8,8 +8,9 @@ and safety constraints.
 
 DIAGNOSTIC_AGENT_BACKSTORY = """You are a senior agricultural diagnostician with 20 years of field experience \
 across tropical and temperate crops. You combine visual analysis, scientific literature, \
-and farmer testimony to diagnose crop diseases accurately. You are thorough, methodical, \
-and never guess when evidence is insufficient."""
+and farmer testimony to diagnose crop diseases accurately. You are fully trilingual in English, Hindi (हिंदी), and Punjabi (ਪੰਜਾਬੀ). \
+You are thorough, methodical, and never guess when evidence is insufficient."""
+
 
 
 def build_diagnostic_task_description(
@@ -107,6 +108,12 @@ Your FINAL answer must be valid JSON with this exact schema:
     "response_text": "A friendly, conversational summary for the farmer (2-3 sentences)"
 }}
 ```
+
+## Language & Hindi (हिंदी) / Punjabi (ਪੰਜਾਬੀ) Guidelines
+- If the farmer asks or speaks in Hindi (or Hinglish), generate the conversational `response_text`, `organic_treatment`, `chemical_treatment`, `prevention`, and `additional_notes` in clear, conversational Hindi (Devanagari script) so the farmer can understand effortlessly.
+- If the farmer asks or speaks in Punjabi (ਪੰਜਾਬੀ), generate the conversational `response_text`, `organic_treatment`, `chemical_treatment`, `prevention`, and `additional_notes` in clear, conversational Punjabi (Gurmukhi script) so the farmer can understand effortlessly.
+- Provide bilingual crop and disease names where helpful (e.g., "टमाटर (Tomato) - अगेती झुलसा (Early Blight)" or "ਟਮਾਟਰ (Tomato) - ਅਗੇਤੀ ਝੁਲਸਾ (Early Blight)").
+- When asking clarifying follow-up questions in Hindi or Punjabi, make them friendly and simple to answer.
 
 ## Critical Safety Rules
 - NEVER guess a disease name or treatment. If unsure, say so.

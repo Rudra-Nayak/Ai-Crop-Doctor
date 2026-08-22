@@ -28,3 +28,4 @@ python-dotenv
 httpx
 Pillow
 numpy
+gTTS

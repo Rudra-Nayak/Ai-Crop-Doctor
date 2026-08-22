@@ -11,7 +11,7 @@
 // Dynamic API Base URL (works whether loaded on FastAPI :8000, Live Server :5500, or file://)
 const API_BASE = (window.location.protocol.startsWith("http") && (window.location.port === "8000" || (window.location.port === "" && window.location.hostname !== "")))
   ? ""
-  : "http://localhost:8000";
+  : "http://127.0.0.1:8000";
 
 // Application State
 const AppState = {
@@ -58,6 +58,34 @@ const SamplePresets = {
     plant: "Apple",
     svgColor: "#22c55e",
     leafType: "olive_spots"
+  },
+  hindi_tomato_blight: {
+    name: "🌱 [हिंदी] टमाटर (अगेती झुलसा)",
+    symptoms: "टमाटर के निचले पत्तों पर भूरे और काले छल्ले जैसे धब्बे बन रहे हैं और पत्ते पीले होकर गिर रहे हैं।",
+    plant: "Tomato / टमाटर",
+    svgColor: "#ef4444",
+    leafType: "concentric"
+  },
+  hindi_potato_blight: {
+    name: "🌱 [हिंदी] आलू (पछेती झुलसा)",
+    symptoms: "आलू के पत्तों पर पानी से भीगे हुए काले धब्बे हैं और सुबह के समय पत्तों के नीचे सफेद ففूंद दिखती है।",
+    plant: "Potato / आलू",
+    svgColor: "#059669",
+    leafType: "water_soaked"
+  },
+  punjabi_tomato_blight: {
+    name: "🌾 [ਪੰਜਾਬੀ] ਟਮਾਟਰ (ਅਗੇਤੀ ਝੁਲਸਾ)",
+    symptoms: "ਟਮਾਟਰ ਦੇ ਹੇਠਲੇ ਪੱਤਿਆਂ ਉੱਤੇ ਭੂਰੇ ਅਤੇ ਕਾਲੇ ਛੱਲਿਆਂ ਵਰਗੇ ਧੱਬੇ ਬਣ ਰਹੇ ਹਨ ਅਤੇ ਪੱਤੇ ਪੀਲੇ ਹੋ ਕੇ ਡਿੱਗ ਰਹੇ ਹਨ।",
+    plant: "Tomato / ਟਮਾਟਰ",
+    svgColor: "#dc2626",
+    leafType: "concentric"
+  },
+  punjabi_potato_blight: {
+    name: "🌾 [ਪੰਜਾਬੀ] ਆਲੂ (ਪਿਛੇਤੀ ਝੁਲਸਾ)",
+    symptoms: "ਆਲੂ ਦੇ ਪੱਤਿਆਂ ਉੱਤੇ ਪਾਣੀ ਨਾਲ ਭਿੱਜੇ ਹੋਏ ਕਾਲੇ ਧੱਬੇ ਹਨ ਅਤੇ ਸਵੇਰੇ ਪੱਤਿਆਂ ਦੇ ਹੇਠਾਂ ਚਿੱਟੀ ਉੱਲੀ ਦਿਖਦੀ ਹੈ।",
+    plant: "Potato / ਆਲੂ",
+    svgColor: "#047857",
+    leafType: "water_soaked"
   }
 };
 
@@ -257,7 +285,7 @@ function handleImageSelect(file) {
   }
   AppState.selectedImageFile = file;
   DOM.previewFileName.textContent = file.name;
-  
+
   const reader = new FileReader();
   reader.onload = (e) => {
     DOM.previewImg.src = e.target.result;
@@ -436,7 +464,7 @@ async function startVoiceRecording() {
       stream.getTracks().forEach(t => t.stop());
       cancelAnimationFrame(AppState.animationFrameId);
       DOM.audioStatusLabel.textContent = "Transcribing with Groq Whisper...";
-      
+
       // Auto-transcribe preview
       await autoTranscribeVoice(AppState.audioBlob);
     };
@@ -531,8 +559,10 @@ function initChatTimeline() {
 }
 
 function initActionButtons() {
-  DOM.btnSubmit.addEventListener("click", () => submitDiagnosis());
-
+  DOM.btnSubmit.addEventListener("click", (e) => {
+    e.preventDefault();
+    submitDiagnosis();
+  });
   // Allow pressing Enter (without Shift) to submit diagnosis
   DOM.symptomInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -578,7 +608,7 @@ async function submitDiagnosis() {
   const attachedImage = image;
   const attachedAudio = audio;
   const submittedWasVoice = wasVoice;
-  
+
   clearSelectedImage();
   AppState.audioBlob = null;
   AppState.lastInputWasVoice = false; // Reset for next message
@@ -629,7 +659,7 @@ async function submitDiagnosis() {
     if (data.diagnosis) {
       AppState.currentDiagnosis = data.diagnosis;
       renderPrescriptionCard(data.diagnosis);
-      
+
       // If farmer spoke via voice, also read key diagnosis aloud
       if (submittedWasVoice) {
         const diagSpeech = `Identified ${data.diagnosis.disease} with ${Math.round(data.diagnosis.confidence * 100)} percent confidence.`;
@@ -742,7 +772,7 @@ function addAgentMessage({ text, actionStep, needsFollowup, followupQuestion }) 
   scrollToBottom();
 }
 
-window.applyQuickReply = function(text) {
+window.applyQuickReply = function (text) {
   DOM.symptomInput.value = text;
   AppState.lastInputWasVoice = false;
   submitDiagnosis();

@@ -27,7 +27,16 @@ uploads/*
 !uploads/.gitkeep
 logs/*
 !logs/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/logs/*
+!backend/logs/.gitkeep
+
+# Knowledge base PDFs (large binary assets)
+*.pdf
+backend/knowledge_base/raw/*.pdf
 
 # Node / Vercel
 node_modules/
 .vercel
+

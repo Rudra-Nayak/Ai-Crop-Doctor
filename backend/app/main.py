@@ -182,6 +182,13 @@ app.post("/dignosis")(legacy_dignosis)
 # ── Mount static frontend (HTML/CSS/JS) ──────────────────────────────
 from fastapi.staticfiles import StaticFiles
 
-if os.path.exists("frontend"):
-    app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+frontend_candidates = [
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend")),
+    os.path.abspath("frontend"),
+    os.path.abspath("../frontend"),
+]
+for fc in frontend_candidates:
+    if os.path.exists(fc):
+        app.mount("/", StaticFiles(directory=fc, html=True), name="frontend")
+        break
 

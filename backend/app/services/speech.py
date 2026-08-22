@@ -35,37 +35,42 @@ class SpeechService:
         self,
         audio_bytes: bytes,
         filename: str = "audio.wav",
-        language: str = "en",
+        language: str | None = None,
     ) -> dict:
         """
         Transcribe audio to text using Groq Whisper.
 
+        If language is None, Whisper auto-detects the spoken language (e.g. Hindi, English).
         Returns:
-            {"text": "...", "language": "en", "duration_s": 0.0}
+            {"text": "...", "language": "hi|en|...", "duration_s": 0.0}
 
         On failure, returns {"text": "", "error": "..."}.
         The caller can fall back to text input.
         """
         try:
             logger.info(
-                "Transcribing audio (%d bytes, model: %s)",
+                "Transcribing audio (%d bytes, model: %s, language: %s)",
                 len(audio_bytes),
                 self._settings.groq_whisper_model,
+                language or "auto-detect",
             )
 
-            transcription = self._client.audio.transcriptions.create(
-                file=(filename, audio_bytes),
-                model=self._settings.groq_whisper_model,
-                response_format="verbose_json",
-                language=language,
-                temperature=0.0,
-            )
+            create_kwargs = {
+                "file": (filename, audio_bytes),
+                "model": self._settings.groq_whisper_model,
+                "response_format": "verbose_json",
+                "temperature": 0.0,
+            }
+            if language:
+                create_kwargs["language"] = language
+
+            transcription = self._client.audio.transcriptions.create(**create_kwargs)
 
             text = transcription.text if hasattr(transcription, "text") else str(transcription)
             duration = getattr(transcription, "duration", 0.0)
-            detected_lang = getattr(transcription, "language", language)
+            detected_lang = getattr(transcription, "language", language or "en")
 
-            logger.info("Transcription: '%s' (%.1fs)", text[:100], duration)
+            logger.info("Transcription: '%s' (lang: %s, %.1fs)", text[:100], detected_lang, duration)
 
             return {
                 "text": text.strip(),
@@ -77,25 +82,55 @@ class SpeechService:
             logger.error("Transcription failed: %s", e, exc_info=True)
             return {
                 "text": "",
-                "language": language,
+                "language": language or "en",
                 "duration_s": 0.0,
                 "error": f"Transcription failed: {str(e)}",
             }
 
     # ── Text-to-Speech ────────────────────────────────────────────────
 
-    async def synthesize(self, text: str) -> bytes:
+    def _synthesize_gtts(self, text: str, lang: str = "hi") -> bytes:
+        """Synthesize text using Google Text-to-Speech (gTTS) for Hindi and fallback."""
+        try:
+            from gtts import gTTS
+
+            # Clean markdown formatting characters
+            clean_text = re.sub(r'[*_#`~]', '', text).strip()
+            if not clean_text:
+                return b""
+
+            tts = gTTS(text=clean_text, lang=lang, slow=False)
+            fp = io.BytesIO()
+            tts.write_to_fp(fp)
+            fp.seek(0)
+            audio_bytes = fp.read()
+            logger.info("gTTS synthesized %d bytes for lang '%s'", len(audio_bytes), lang)
+            return audio_bytes
+        except Exception as e:
+            logger.error("gTTS synthesis failed for lang '%s': %s", lang, e, exc_info=True)
+            return b""
+
+    async def synthesize(self, text: str, language: str | None = None) -> bytes:
         """
-        Convert text to speech using Groq Orpheus TTS.
+        Convert text to speech.
 
-        Handles the 200-character limit by chunking text into sentences
-        and concatenating the resulting audio.
-
-        Returns WAV audio bytes. On failure, returns empty bytes
-        (the frontend falls back to displaying text).
+        For Hindi text (or when language='hi'), uses gTTS for natural Hindi audio.
+        For English text, uses Groq Orpheus TTS with gTTS fallback.
         """
         if not text or not text.strip():
             return b""
+
+        # Detect Hindi (Devanagari Unicode block \u0900-\u097F)
+        contains_hindi = bool(re.search(r'[\u0900-\u097F]', text))
+        if contains_hindi or language == "hi":
+            logger.info("Hindi detected in text. Using gTTS (hi).")
+            return self._synthesize_gtts(text, lang="hi")
+
+        # Detect Punjabi (Gurmukhi Unicode block \u0A00-\u0A7F)
+        contains_punjabi = bool(re.search(r'[\u0A00-\u0A7F]', text))
+        if contains_punjabi or language == "pa":
+            logger.info("Punjabi detected in text. Using gTTS (pa).")
+            return self._synthesize_gtts(text, lang="pa")
 
         try:
             chunks = self._chunk_text(text, max_chars=190)
@@ -132,8 +167,8 @@ class SpeechService:
                 logger.debug("Chunk %d/%d synthesized (%d bytes)", i + 1, len(chunks), len(audio_data))
 
             if not audio_parts:
-                logger.warning("TTS produced no audio data")
-                return b""
+                logger.warning("Groq TTS produced no audio data, falling back to gTTS (en)")
+                return self._synthesize_gtts(text, lang="en")
 
             if len(audio_parts) == 1:
                 result = audio_parts[0]
@@ -144,8 +179,9 @@ class SpeechService:
             return result
 
         except Exception as e:
-            logger.error("TTS synthesis failed: %s", e, exc_info=True)
-            return b""
+            logger.warning("Groq TTS failed (%s), falling back to gTTS: %s", self._settings.groq_tts_model, e)
+            return self._synthesize_gtts(text, lang="en")
+
 
     @staticmethod
     def _fix_wav_headers(data: bytes) -> bytes:
