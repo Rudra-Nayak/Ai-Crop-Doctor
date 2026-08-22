@@ -216,14 +216,17 @@ class SupabasePgVectorStore(VectorStoreBase):
         query_embedding = self._embeddings.embed_query(query)
 
         try:
-            rpc_res = self._client.rpc(
-                "match_documents",
-                {
-                    "query_embedding": query_embedding,
-                    "match_threshold": 0.0,
-                    "match_count": k,
-                }
-            ).execute()
+            def _rpc():
+                return self._client.rpc(
+                    "match_documents",
+                    {
+                        "query_embedding": query_embedding,
+                        "match_threshold": 0.0,
+                        "match_count": k,
+                    }
+                ).execute()
+
+            rpc_res = await asyncio.to_thread(_rpc)
 
             results = []
             for row in rpc_res.data or []:

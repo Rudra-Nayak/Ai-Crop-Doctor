@@ -85,12 +85,15 @@ class InMemorySessionStore(SessionStore):
         return [c for c in self._cases.values() if c.status == "active"]
 
 
+import asyncio
+
+
 class SupabaseSessionStore(SessionStore):
     """
     Supabase PostgreSQL-backed session store.
 
     Persists diagnostic consultation history, messages, and structured prescriptions
-    to table `diagnostic_cases` in Supabase PostgreSQL.
+    to table `diagnostic_cases` in Supabase PostgreSQL without blocking Uvicorn's event loop.
     """
 
     def __init__(self, url: str, key: str) -> None:
@@ -114,26 +117,30 @@ class SupabaseSessionStore(SessionStore):
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
         }
-        self._client.table("diagnostic_cases").insert(data).execute()
+        await asyncio.to_thread(lambda: self._client.table("diagnostic_cases").insert(data).execute())
         return case
 
     async def get_case(self, case_id: str) -> Case | None:
         try:
-            res = self._client.table("diagnostic_cases").select("*").eq("case_id", case_id).execute()
+            def _fetch():
+                return self._client.table("diagnostic_cases").select("*").eq("case_id", case_id).execute()
+
+            res = await asyncio.to_thread(_fetch)
             if not res.data:
                 return None
             row = res.data[0]
-            # Deserialize row to Case object
-            case = Case.model_validate(row)
-            return case
-        except Exception:
+            return Case.model_validate(row)
+        except Exception as e:
             return None
 
     async def update_case(self, case: Case) -> None:
         try:
             case.updated_at = datetime.now(timezone.utc)
             data = case.model_dump(mode="json")
-            self._client.table("diagnostic_cases").update(data).eq("case_id", case.case_id).execute()
+            def _upd():
+                return self._client.table("diagnostic_cases").update(data).eq("case_id", case.case_id).execute()
+
+            await asyncio.to_thread(_upd)
         except Exception:
             pass
 
@@ -147,7 +154,10 @@ class SupabaseSessionStore(SessionStore):
 
     async def list_active_cases(self) -> list[Case]:
         try:
-            res = self._client.table("diagnostic_cases").select("*").eq("status", "active").execute()
+            def _list():
+                return self._client.table("diagnostic_cases").select("*").eq("status", "active").execute()
+
+            res = await asyncio.to_thread(_list)
             return [Case.model_validate(row) for row in res.data or []]
         except Exception:
             return []
