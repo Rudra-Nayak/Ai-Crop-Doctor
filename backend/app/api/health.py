@@ -59,3 +59,28 @@ async def health(request: Request):
             active_sessions=0,
             knowledge_base_chunks=0,
         )
+
+
+@router.get("/debug_step")
+async def debug_step(request: Request, step: int = 1):
+    import time
+    t0 = time.time()
+    if step == 1:
+        sm = request.app.state.session_manager
+        case = await sm.get_or_create_case(None)
+        return {"step": 1, "status": "ok", "case_id": case.case_id, "elapsed_ms": round((time.time() - t0) * 1000, 1)}
+    elif step == 2:
+        rag = request.app.state.rag_service
+        docs = await rag.query("Tomato early blight")
+        return {"step": 2, "status": "ok", "docs_count": len(docs), "elapsed_ms": round((time.time() - t0) * 1000, 1)}
+    elif step == 3:
+        from groq import AsyncGroq
+        cfg = request.app.state.config
+        client = AsyncGroq(api_key=cfg.groq_api_key)
+        res = await client.chat.completions.create(
+            model=cfg.groq_text_model,
+            messages=[{"role": "user", "content": "Hello"}],
+            max_tokens=10,
+        )
+        return {"step": 3, "status": "ok", "response": res.choices[0].message.content, "elapsed_ms": round((time.time() - t0) * 1000, 1)}
+    return {"error": "invalid step"}
