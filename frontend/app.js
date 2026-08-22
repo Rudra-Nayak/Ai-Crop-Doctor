@@ -8,10 +8,11 @@
  * - If input was provided via Text -> Response is given in Text (no auto-speech)
  */
 
-// Dynamic API Base URL (works whether loaded on FastAPI :8000, Live Server :5500, or file://)
-const API_BASE = (window.location.protocol.startsWith("http") && (window.location.port === "8000" || (window.location.port === "" && window.location.hostname !== "")))
+// Dynamic API Base URL — uses relative origin if served by FastAPI/Render, else connects to live Render cloud backend
+const RENDER_BACKEND = "https://ai-crop-doctor-1u6a.onrender.com";
+const API_BASE = (window.location.protocol.startsWith("http") && (window.location.port === "8000" || window.location.hostname.endsWith("onrender.com")))
   ? ""
-  : "http://127.0.0.1:8000";
+  : RENDER_BACKEND;
 
 // Application State
 const AppState = {
@@ -670,7 +671,7 @@ async function submitDiagnosis() {
   } catch (err) {
     console.error("Diagnosis request error:", err);
     addAgentMessage({
-      text: `Unable to complete analysis: ${err.message}. Please ensure the backend is running on http://localhost:8000.`,
+      text: `Unable to complete analysis: ${err.message}. Please check backend connection to ${API_BASE || window.location.origin}.`,
       actionStep: "Error",
       needsFollowup: false
     });
