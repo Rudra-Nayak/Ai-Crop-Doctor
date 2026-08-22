@@ -135,6 +135,7 @@ def main():
     for tc in test_cases:
         result = run_test_case(client, args.api_url, tc)
         results.append(result)
+        time.sleep(2.5)  # Pace requests to avoid API rate limits
 
     # Summary
     print("\n" + "=" * 60)

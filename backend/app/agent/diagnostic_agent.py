@@ -183,15 +183,25 @@ class DiagnosticAgent:
                 f"Conversation History:\n{conversation_history or 'New consultation.'}"
             )
 
-            resp = self._groq_client.chat.completions.create(
-                model=self._config.groq_text_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.2,
-                max_completion_tokens=2048,
-            )
+            import time
+            resp = None
+            for attempt in range(3):
+                try:
+                    resp = self._groq_client.chat.completions.create(
+                        model=self._config.groq_text_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=0.2,
+                        max_completion_tokens=2048,
+                    )
+                    break
+                except Exception as g_err:
+                    if attempt == 2:
+                        raise g_err
+                    logger.warning("Groq API call attempt %d failed: %s. Retrying...", attempt + 1, g_err)
+                    time.sleep(2 * (attempt + 1))
 
             fallback_raw = resp.choices[0].message.content
             return self._parse_output(fallback_raw)
