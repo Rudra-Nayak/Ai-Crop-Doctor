@@ -74,10 +74,12 @@ async def diagnose(
         try:
             # Validate file type
             content_type = image.content_type or ""
-            if not content_type.startswith("image/"):
+            ext = os.path.splitext(image.filename)[1].lower() or ".jpg"
+            is_valid_image = content_type.startswith("image/") or ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
+            if not is_valid_image:
                 return DiagnosisResponse(
                     case_id=current_case_id,
-                    response_text="Please upload an image file (JPEG, PNG, etc.).",
+                    response_text="Please upload a valid image file (JPEG, PNG, WEBP).",
                     needs_followup=False,
                     confidence=0.0,
                 )

@@ -8,11 +8,11 @@
  * - If input was provided via Text -> Response is given in Text (no auto-speech)
  */
 
-// Dynamic API Base URL — uses relative origin if served by FastAPI/Render, else connects to live Render cloud backend
-const RENDER_BACKEND = "https://ai-crop-doctor-1u6a.onrender.com";
-const API_BASE = (window.location.protocol.startsWith("http") && (window.location.port === "8000" || window.location.hostname.endsWith("onrender.com")))
-  ? ""
-  : RENDER_BACKEND;
+const API_BASE =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+        ? "http://localhost:8000"
+        : "https://ai-crop-doctor-1u6a.onrender.com";
 
 // Application State
 const AppState = {
