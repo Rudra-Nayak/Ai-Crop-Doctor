@@ -45,91 +45,97 @@ async def diagnose(
     speech_service = request.app.state.speech_service
     config = request.app.state.config
 
-    # Step 1: Get or create case
-    case = await session_manager.get_or_create_case(case_id)
-    current_case_id = case.case_id
+    try:
+        # Step 1: Get or create case
+        case = await session_manager.get_or_create_case(case_id)
+        current_case_id = case.case_id
 
-    # Step 2: Handle audio → transcribe to text
-    user_text = text
-    if audio and audio.filename:
-        try:
-            audio_bytes = await audio.read()
-            if audio_bytes:
-                transcript = await speech_service.transcribe(
-                    audio_bytes=audio_bytes,
-                    filename=audio.filename,
-                )
-                if transcript.get("text"):
-                    user_text = transcript["text"]
-                    logger.info("Audio transcribed: '%s'", user_text[:100])
-                elif transcript.get("error"):
-                    logger.warning("Audio transcription failed: %s", transcript["error"])
-                    # Fall through — use any text that was also provided
-        except Exception as e:
-            logger.error("Audio processing error: %s", e)
+        # Step 2: Handle audio → transcribe to text
+        user_text = text
+        if audio and audio.filename:
+            try:
+                audio_bytes = await audio.read()
+                if audio_bytes:
+                    transcript = await speech_service.transcribe(
+                        audio_bytes=audio_bytes,
+                        filename=audio.filename,
+                    )
+                    if transcript.get("text"):
+                        user_text = transcript["text"]
+                        logger.info("Audio transcribed: '%s'", user_text[:100])
+                    elif transcript.get("error"):
+                        logger.warning("Audio transcription failed: %s", transcript["error"])
+            except Exception as e:
+                logger.error("Audio processing error: %s", e)
 
-    # Step 3: Handle image upload
-    image_path = None
-    if image and image.filename:
-        try:
-            # Validate file type
-            content_type = image.content_type or ""
-            ext = os.path.splitext(image.filename)[1].lower() or ".jpg"
-            is_valid_image = content_type.startswith("image/") or ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
-            if not is_valid_image:
-                return DiagnosisResponse(
-                    case_id=current_case_id,
-                    response_text="Please upload a valid image file (JPEG, PNG, WEBP).",
-                    needs_followup=False,
-                    confidence=0.0,
-                )
+        # Step 3: Handle image upload
+        image_path = None
+        if image and image.filename:
+            try:
+                content_type = image.content_type or ""
+                ext = os.path.splitext(image.filename)[1].lower() or ".jpg"
+                is_valid_image = content_type.startswith("image/") or ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
+                if not is_valid_image:
+                    return DiagnosisResponse(
+                        case_id=current_case_id,
+                        response_text="Please upload a valid image file (JPEG, PNG, WEBP).",
+                        needs_followup=False,
+                        confidence=0.0,
+                    )
 
-            # Save the image
-            upload_dir = config.upload_dir
-            os.makedirs(upload_dir, exist_ok=True)
-            ext = os.path.splitext(image.filename)[1] or ".jpg"
-            filename = f"{uuid.uuid4()}{ext}"
-            image_path = os.path.join(upload_dir, filename)
+                upload_dir = config.upload_dir
+                os.makedirs(upload_dir, exist_ok=True)
+                ext = os.path.splitext(image.filename)[1] or ".jpg"
+                filename = f"{uuid.uuid4()}{ext}"
+                image_path = os.path.join(upload_dir, filename)
 
-            with open(image_path, "wb") as f:
-                content = await image.read()
-                f.write(content)
+                with open(image_path, "wb") as f:
+                    content = await image.read()
+                    f.write(content)
 
-            logger.info("Image saved: %s", image_path)
+                logger.info("Image saved: %s", image_path)
 
-        except Exception as e:
-            logger.error("Image save failed: %s", e)
-            image_path = None
+            except Exception as e:
+                logger.error("Image save failed: %s", e)
+                image_path = None
 
-    # Step 4: Validate we have some input
-    if not user_text and not image_path:
-        return DiagnosisResponse(
+        # Step 4: Validate input presence
+        if not user_text and not image_path:
+            return DiagnosisResponse(
+                case_id=current_case_id,
+                response_text=(
+                    "Please provide a description of your crop problem, "
+                    "upload a photo of the affected plant, or record a voice message."
+                ),
+                needs_followup=True,
+                followup_question="What symptoms are you seeing on your crops?",
+                confidence=0.0,
+            )
+
+        # Step 5: Run diagnostic flow
+        state = await diagnostic_flow.run(
             case_id=current_case_id,
-            response_text=(
-                "Please provide a description of your crop problem, "
-                "upload a photo of the affected plant, or record a voice message."
-            ),
-            needs_followup=True,
-            followup_question="What symptoms are you seeing on your crops?",
-            confidence=0.0,
+            user_message=user_text,
+            image_path=image_path,
         )
 
-    # Step 5: Run the diagnostic flow
-    state = await diagnostic_flow.run(
-        case_id=current_case_id,
-        user_message=user_text,
-        image_path=image_path,
-    )
-
-    # Step 6: Build response
-    return DiagnosisResponse(
-        case_id=current_case_id,
-        response_text=state.response_text,
-        diagnosis=state.diagnosis,
-        needs_followup=state.needs_followup,
-        followup_question=state.followup_question,
-        confidence=state.confidence,
-    )
+        # Step 6: Build response
+        return DiagnosisResponse(
+            case_id=current_case_id,
+            response_text=state.response_text,
+            diagnosis=state.diagnosis,
+            needs_followup=state.needs_followup,
+            followup_question=state.followup_question,
+            confidence=state.confidence,
+        )
+    except Exception as top_err:
+        logger.error("Top-level diagnosis handler exception: %s", top_err, exc_info=True)
+        return DiagnosisResponse(
+            case_id=case_id or str(uuid.uuid4()),
+            response_text=f"Diagnosis temporarily unavailable: {str(top_err)}. Please try again.",
+            needs_followup=False,
+            confidence=0.0,
+        )
 
 
 @router.post("/dignosis")
