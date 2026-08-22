@@ -5,14 +5,9 @@ python-multipart
 pydantic
 pydantic-settings
 
-# AI / Agents
-crewai
-litellm
-langchain
-langchain-core
-langchain-community
-langchain-groq
+# AI / Groq Inference
 groq
+langchain-core
 
 # RAG
 sentence-transformers

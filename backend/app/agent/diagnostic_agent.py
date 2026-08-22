@@ -1,8 +1,8 @@
 """
-Diagnostic agent — single CrewAI agent with tool-calling evidence loop.
+Diagnostic agent — multimodal AI crop pathologist with vision and RAG.
 
-This is the core intelligence of the system. One agent, four tools,
-autonomous reasoning about what evidence to gather next.
+This is the core intelligence of the system. Autonomous reasoning about
+symptoms, visual findings, and agricultural knowledge base.
 """
 
 import asyncio
@@ -13,33 +13,7 @@ from typing import Any
 
 from groq import AsyncGroq
 
-# Apply compatibility patches for CrewAI / LiteLLM on non-Anthropic providers
-try:
-    import litellm
-    litellm.drop_params = True
-    litellm.num_retries = 5
-
-    _orig_litellm_comp = litellm.completion
-
-    def _sanitized_completion(*args, **kwargs):
-        if "messages" in kwargs and isinstance(kwargs["messages"], list):
-            for msg in kwargs["messages"]:
-                if isinstance(msg, dict):
-                    msg.pop("cache_breakpoint", None)
-                    msg.pop("cache_control", None)
-        return _orig_litellm_comp(*args, **kwargs)
-
-    litellm.completion = _sanitized_completion
-except Exception:
-    pass
-
 from app.agent.prompts import DIAGNOSTIC_AGENT_BACKSTORY, build_diagnostic_task_description
-from app.agent.tools import (
-    AnalyzeCropImageTool,
-    AskFollowupQuestionTool,
-    CheckConfidenceTool,
-    SearchKnowledgeBaseTool,
-)
 from app.config import Settings
 from app.services.rag import RAGService
 from app.services.vision import VisionService
@@ -50,10 +24,8 @@ logger = logging.getLogger(__name__)
 
 class DiagnosticAgent:
     """
-    Factory and runner for the single diagnostic agent (Async).
-
-    Creates a CrewAI Agent equipped with 4 tools and runs it
-    against a diagnostic task built from the current case state.
+    Multimodal Diagnostic Agent (Async).
+    Orchestrates Groq Vision + Llama-3.3/3.1 reasoning + Supabase RAG.
     """
 
     def __init__(
@@ -66,31 +38,6 @@ class DiagnosticAgent:
         self._vision_service = vision_service
         self._rag_service = rag_service
         self._groq_client = AsyncGroq(api_key=config.groq_api_key)
-
-    def _create_agent(self) -> Any:
-        """Create the diagnostic agent instance lazily."""
-        from crewai import Agent, LLM
-        llm = LLM(
-            model=f"groq/{self._config.groq_text_model}",
-            api_key=self._config.groq_api_key,
-            temperature=0.2,
-            max_tokens=2048,
-        )
-        return Agent(
-            role="Senior Agricultural Diagnostician",
-            goal=(
-                "Accurately diagnose crop diseases by gathering evidence through "
-                "image analysis, knowledge base research, and farmer communication. "
-                "Only diagnose when evidence is sufficient. Ask follow-up questions "
-                "or escalate when uncertain."
-            ),
-            backstory=DIAGNOSTIC_AGENT_BACKSTORY,
-            tools=self._tools,
-            llm=llm,
-            verbose=True,
-            allow_delegation=False,
-            max_iter=self._config.max_agent_iterations,
-        )
 
     async def run(
         self,

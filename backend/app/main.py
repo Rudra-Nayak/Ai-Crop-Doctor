@@ -31,25 +31,7 @@ from app.services.vision import VisionService
 from app.session.manager import SessionManager
 from app.session.store import InMemorySessionStore
 
-# Apply compatibility patches for CrewAI / LiteLLM on non-Anthropic providers
-try:
-    import litellm
-    litellm.drop_params = True
-    litellm.num_retries = 5
 
-    _orig_litellm_comp = litellm.completion
-
-    def _sanitized_completion(*args, **kwargs):
-        if "messages" in kwargs and isinstance(kwargs["messages"], list):
-            for msg in kwargs["messages"]:
-                if isinstance(msg, dict):
-                    msg.pop("cache_breakpoint", None)
-                    msg.pop("cache_control", None)
-        return _orig_litellm_comp(*args, **kwargs)
-
-    litellm.completion = _sanitized_completion
-except Exception:
-    pass
 
 # Configure logging
 logging.basicConfig(
