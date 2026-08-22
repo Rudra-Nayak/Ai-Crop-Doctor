@@ -30,6 +30,7 @@ from sentence_transformers import SentenceTransformer
 
 _MODEL_INSTANCE: SentenceTransformer | None = None
 _LOCK = Lock()
+logger = logging.getLogger(__name__)
 
 
 def get_sentence_transformer(model_name: str = "all-MiniLM-L6-v2") -> SentenceTransformer:

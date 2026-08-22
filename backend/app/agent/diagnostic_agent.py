@@ -5,8 +5,7 @@ This is the core intelligence of the system. One agent, four tools,
 autonomous reasoning about what evidence to gather next.
 """
 
-from __future__ import annotations
-
+import asyncio
 import json
 import os
 import logging
@@ -184,10 +183,20 @@ class DiagnosticAgent:
             )
 
             resp = None
-            for attempt in range(3):
+            candidate_models = [
+                self._config.groq_text_model,
+                "llama-3.3-70b-versatile",
+                "llama-3.1-8b-instant",
+                "gemma2-9b-it"
+            ]
+            # Remove duplicate model names while preserving order
+            seen_models = set()
+            models_to_try = [m for m in candidate_models if m and not (m in seen_models or seen_models.add(m))]
+
+            for model_name in models_to_try:
                 try:
                     resp = await self._groq_client.chat.completions.create(
-                        model=self._config.groq_text_model,
+                        model=model_name,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
@@ -197,10 +206,11 @@ class DiagnosticAgent:
                     )
                     break
                 except Exception as g_err:
-                    if attempt == 2:
-                        raise g_err
-                    logger.warning("Groq API call attempt %d failed: %s. Retrying...", attempt + 1, g_err)
-                    await asyncio.sleep(2 * (attempt + 1))
+                    logger.warning("Groq API call with model '%s' failed: %s. Trying next candidate model...", model_name, g_err)
+                    await asyncio.sleep(0.5)
+
+            if resp is None:
+                raise RuntimeError("All candidate Groq text models failed or reached rate limits.")
 
             fallback_raw = resp.choices[0].message.content
             return self._parse_output(fallback_raw)

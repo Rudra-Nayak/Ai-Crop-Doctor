@@ -123,23 +123,41 @@ class VisionService:
 
             logger.info("Analyzing image: %s (model: %s)", image_path, self._settings.groq_vision_model)
 
-            response = await self._client.chat.completions.create(
-                model=self._settings.groq_vision_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": VISION_SYSTEM_PROMPT},
+            candidate_vision_models = [
+                self._settings.groq_vision_model,
+                "meta-llama/llama-3.2-11b-vision-instruct",
+                "llama-3.2-11b-vision-preview",
+                "llama-3.2-90b-vision-preview",
+            ]
+            seen_vision = set()
+            models_to_try = [m for m in candidate_vision_models if m and not (m in seen_vision or seen_vision.add(m))]
+
+            response = None
+            for v_model in models_to_try:
+                try:
+                    response = await self._client.chat.completions.create(
+                        model=v_model,
+                        messages=[
                             {
-                                "type": "image_url",
-                                "image_url": {"url": image_url},
-                            },
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": VISION_SYSTEM_PROMPT},
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": image_url},
+                                    },
+                                ],
+                            }
                         ],
-                    }
-                ],
-                temperature=0.1,
-                max_completion_tokens=4096,
-            )
+                        temperature=0.1,
+                        max_completion_tokens=4096,
+                    )
+                    break
+                except Exception as v_err:
+                    logger.warning("Vision model '%s' failed: %s. Trying next candidate...", v_model, v_err)
+
+            if response is None:
+                raise RuntimeError("All candidate Groq vision models failed or reached rate limits.")
 
             raw = response.choices[0].message.content
             logger.debug("Vision raw response: %s", raw[:500])
