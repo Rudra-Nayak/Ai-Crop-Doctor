@@ -87,14 +87,10 @@ async def lifespan(app: FastAPI):
     os.makedirs(config.upload_dir, exist_ok=True)
     os.makedirs(config.log_dir, exist_ok=True)
 
-    # ── Initialize RAG pipeline ───────────────────────────────────
-    if config.use_supabase_rag and config.supabase_url and config.supabase_key:
-        logger.info("Using Supabase pgvector RAG store (%s)", config.supabase_url)
-        from app.rag.vector_store import SupabasePgVectorStore
-        vector_store = SupabasePgVectorStore(config.supabase_url, config.supabase_key, get_embeddings)
-    else:
-        logger.info("Using local FAISS vector store from: %s", config.faiss_index_path)
-        vector_store = FAISSVectorStore(config.faiss_index_path, get_embeddings)
+    # ── Initialize RAG pipeline (Supabase pgvector) ───────────────
+    from app.rag.vector_store import SupabasePgVectorStore
+    logger.info("Using Supabase pgvector RAG store (%s)", config.supabase_url or "cloud")
+    vector_store = SupabasePgVectorStore(config.supabase_url, config.supabase_key, get_embeddings)
 
     rag_service = RAGService(
         vector_store=vector_store,

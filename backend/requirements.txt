@@ -15,7 +15,6 @@ langchain-groq
 groq
 
 # RAG
-faiss-cpu
 sentence-transformers
 langchain-huggingface
 
