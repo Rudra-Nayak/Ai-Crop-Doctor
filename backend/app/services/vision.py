@@ -8,12 +8,11 @@ multimodal messages with image_url content blocks.
 
 from __future__ import annotations
 
+from groq import AsyncGroq
 import base64
 import json
 import logging
 import os
-
-from groq import Groq
 
 from app.config import get_settings
 
