@@ -11,9 +11,19 @@ import logging
 import os
 from threading import Lock
 
-# Force offline mode for HuggingFace to avoid hanging on network checks
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
+# Memory optimization for 512MB RAM environments (e.g. Render Free Tier)
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+try:
+    import torch
+    torch.set_num_threads(1)
+except Exception:
+    pass
 
 from langchain_huggingface import HuggingFaceEmbeddings
 
