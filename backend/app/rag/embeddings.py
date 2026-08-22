@@ -25,41 +25,53 @@ try:
 except Exception:
     pass
 
-from langchain_huggingface import HuggingFaceEmbeddings
+from functools import lru_cache
+from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
-_embeddings_instance: HuggingFaceEmbeddings | None = None
+
+@lru_cache(maxsize=1)
+def get_sentence_transformer(model_name: str = "all-MiniLM-L6-v2") -> SentenceTransformer:
+    """Load and cache the SentenceTransformer model singleton exactly once."""
+    logger.info("Loading embedding model: %s ...", model_name)
+    return SentenceTransformer(model_name, device="cpu")
+
+
+class LightweightEmbeddings:
+    """Lightweight Embeddings adapter backed by cached SentenceTransformer singleton."""
+
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
+        self.model_name = model_name
+
+    def embed_query(self, text: str) -> list[float]:
+        model = get_sentence_transformer(self.model_name)
+        emb = model.encode(text, normalize_embeddings=True)
+        return emb.tolist() if hasattr(emb, "tolist") else list(emb)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        model = get_sentence_transformer(self.model_name)
+        embs = model.encode(texts, normalize_embeddings=True)
+        return [e.tolist() if hasattr(e, "tolist") else list(e) for e in embs]
+
+
+_embeddings_instance: LightweightEmbeddings | None = None
 _lock = Lock()
 
 
-def get_embeddings(model_name: str = "all-MiniLM-L6-v2") -> HuggingFaceEmbeddings:
-    """
-    Get or create the singleton embedding model.
-
-    First call downloads the model (~80MB) and loads it.
-    Subsequent calls return the cached instance.
-    """
+def get_embeddings(model_name: str = "all-MiniLM-L6-v2") -> LightweightEmbeddings:
+    """Get or create the singleton embedding adapter."""
     global _embeddings_instance
-
     if _embeddings_instance is not None:
         return _embeddings_instance
 
     with _lock:
-        # Double-check after acquiring lock
         if _embeddings_instance is not None:
             return _embeddings_instance
-
-        logger.info("Loading embedding model: %s ...", model_name)
-        _embeddings_instance = HuggingFaceEmbeddings(
-            model_name=model_name,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
-        )
-        logger.info("Embedding model loaded successfully.")
+        _embeddings_instance = LightweightEmbeddings(model_name)
         return _embeddings_instance
 
 
 def is_loaded() -> bool:
-    """Check if the embedding model has been loaded."""
+    """Check if the embedding model has been loaded into memory."""
     return _embeddings_instance is not None
