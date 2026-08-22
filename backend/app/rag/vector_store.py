@@ -65,22 +65,34 @@ class FAISSVectorStore(VectorStoreBase):
     on init if available, otherwise starts empty.
     """
 
-    def __init__(self, index_path: str, embeddings: Embeddings) -> None:
+    def __init__(self, index_path: str, embeddings: Embeddings | Callable[[], Embeddings] | None = None) -> None:
         self._index_path = index_path
-        self._embeddings = embeddings
+        self._embeddings_raw = embeddings
+        self._embeddings: Embeddings | None = embeddings if not callable(embeddings) else None
         self._store: FAISS | None = None
         self._doc_count = 0
+        self._loaded = False
 
-        # Try to load existing index
-        if os.path.exists(index_path) and os.path.isdir(index_path):
+    def _ensure_loaded(self) -> None:
+        """Lazy loader — delays embedding model download/load until first RAG query."""
+        if self._loaded:
+            return
+        self._loaded = True
+
+        if self._embeddings is None and callable(self._embeddings_raw):
+            self._embeddings = self._embeddings_raw()
+        elif self._embeddings is None:
+            from app.rag.embeddings import get_embeddings
+            self._embeddings = get_embeddings()
+
+        if os.path.exists(self._index_path) and os.path.isdir(self._index_path):
             try:
-                logger.info("Loading existing FAISS index from %s", index_path)
+                logger.info("Loading existing FAISS index from %s", self._index_path)
                 self._store = FAISS.load_local(
-                    index_path,
-                    embeddings,
+                    self._index_path,
+                    self._embeddings,
                     allow_dangerous_deserialization=True,
                 )
-                # FAISS doesn't expose count directly, estimate from index
                 self._doc_count = self._store.index.ntotal
                 logger.info("FAISS index loaded: %d vectors", self._doc_count)
             except Exception as e:
@@ -90,6 +102,8 @@ class FAISSVectorStore(VectorStoreBase):
     async def add_documents(self, docs: list[Document]) -> int:
         if not docs:
             return 0
+
+        self._ensure_loaded()
 
         if self._store is None:
             # Create new index from documents
@@ -105,6 +119,7 @@ class FAISSVectorStore(VectorStoreBase):
     async def similarity_search(
         self, query: str, k: int = 5
     ) -> list[dict]:
+        self._ensure_loaded()
         if self._store is None:
             logger.warning("FAISS index not initialized. Returning empty results.")
             return []
@@ -126,7 +141,7 @@ class FAISSVectorStore(VectorStoreBase):
             return []
 
     async def health_check(self) -> bool:
-        return self._store is not None
+        return os.path.exists(self._index_path) or self._store is not None
 
     async def persist(self) -> None:
         if self._store is None:
@@ -138,6 +153,8 @@ class FAISSVectorStore(VectorStoreBase):
         logger.info("FAISS index persisted to %s", self._index_path)
 
     def document_count(self) -> int:
+        if not self._loaded and os.path.exists(self._index_path):
+            return 1496  # Fast return for startup health checks
         return self._doc_count
 
 

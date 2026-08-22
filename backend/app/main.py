@@ -88,11 +88,8 @@ async def lifespan(app: FastAPI):
     os.makedirs(config.log_dir, exist_ok=True)
 
     # ── Initialize RAG pipeline ───────────────────────────────────
-    logger.info("Loading embedding model: %s", config.embedding_model)
-    embeddings = get_embeddings(config.embedding_model)
-
-    logger.info("Loading FAISS index from: %s", config.faiss_index_path)
-    vector_store = FAISSVectorStore(config.faiss_index_path, embeddings)
+    logger.info("Initializing lazy FAISS vector store from: %s", config.faiss_index_path)
+    vector_store = FAISSVectorStore(config.faiss_index_path, get_embeddings)
 
     rag_service = RAGService(
         vector_store=vector_store,
