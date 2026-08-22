@@ -86,6 +86,10 @@ async def lifespan(app: FastAPI):
     os.makedirs(config.upload_dir, exist_ok=True)
     os.makedirs(config.log_dir, exist_ok=True)
 
+    # ── Pre-load embedding model singleton ONCE at startup ────────
+    logger.info("Pre-loading embedding model singleton once at startup...")
+    get_embeddings(config.embedding_model)
+
     # ── Initialize RAG pipeline (Supabase pgvector) ───────────────
     from app.rag.vector_store import SupabasePgVectorStore
     logger.info("Using Supabase pgvector RAG store (%s)", config.supabase_url or "cloud")
@@ -170,7 +174,15 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten in production
+    allow_origins=[
+        "https://ai-crop-doctor-six.vercel.app",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
