@@ -185,9 +185,10 @@ class DiagnosticAgent:
             resp = None
             candidate_models = [
                 self._config.groq_text_model,
-                "llama-3.3-70b-versatile",
                 "llama-3.1-8b-instant",
-                "gemma2-9b-it"
+                "llama-3.3-70b-versatile",
+                "llama3-70b-8192",
+                "llama3-8b-8192",
             ]
             # Remove duplicate model names while preserving order
             seen_models = set()
@@ -204,10 +205,11 @@ class DiagnosticAgent:
                         temperature=0.2,
                         max_completion_tokens=2048,
                     )
-                    break
+                    if resp and resp.choices:
+                        break
                 except Exception as g_err:
                     logger.warning("Groq API call with model '%s' failed: %s. Trying next candidate model...", model_name, g_err)
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.5)
 
             if resp is None:
                 raise RuntimeError("All candidate Groq text models failed or reached rate limits.")
@@ -259,39 +261,80 @@ class DiagnosticAgent:
         diagnosis_dict = self._extract_json(clean_text)
 
         if diagnosis_dict:
-            # Extract conversational response
-            response_text = diagnosis_dict.pop("response_text", "")
+            # Extract conversational response and follow-up flags
+            response_text = diagnosis_dict.pop("response_text", "") or ""
+            needs_followup = bool(diagnosis_dict.get("needs_followup", False))
+            followup_question = diagnosis_dict.get("followup_question", None)
 
-            # Build DiagnosisResult
+            def _s_str(v):
+                return "" if v is None else str(v).strip()
+
+            def _s_float(v, d=0.0):
+                if v is None:
+                    return d
+                if isinstance(v, (int, float)):
+                    return float(v / 100.0) if v > 1.0 else float(v)
+                try:
+                    s = str(v).replace("%", "").strip()
+                    f = float(s)
+                    return float(f / 100.0) if f > 1.0 else float(f)
+                except (ValueError, TypeError):
+                    return d
+
+            def _s_list(v):
+                if v is None:
+                    return []
+                if isinstance(v, list):
+                    return [str(x).strip() for x in v if x is not None]
+                return [str(v).strip()]
+
+            # Build DiagnosisResult safely handling nulls
             try:
+                disease_str = _s_str(diagnosis_dict.get("disease"))
+                plant_str = _s_str(diagnosis_dict.get("plant_name"))
+                conf_val = _s_float(diagnosis_dict.get("confidence"), 0.0)
+
                 diagnosis = DiagnosisResult(
-                    plant_name=diagnosis_dict.get("plant_name", ""),
-                    disease=diagnosis_dict.get("disease", ""),
-                    confidence=float(diagnosis_dict.get("confidence", 0)),
-                    severity=diagnosis_dict.get("severity", ""),
-                    symptoms=diagnosis_dict.get("symptoms", []),
-                    cause=diagnosis_dict.get("cause", ""),
-                    organic_treatment=diagnosis_dict.get("organic_treatment", []),
-                    chemical_treatment=diagnosis_dict.get("chemical_treatment", []),
-                    prevention=diagnosis_dict.get("prevention", []),
-                    evidence_sources=diagnosis_dict.get("evidence_sources", []),
-                    is_escalated=diagnosis_dict.get("is_escalated", False),
-                    escalation_reason=diagnosis_dict.get("escalation_reason", ""),
-                    additional_notes=diagnosis_dict.get("additional_notes", ""),
+                    plant_name=plant_str,
+                    disease=disease_str,
+                    confidence=conf_val,
+                    severity=_s_str(diagnosis_dict.get("severity")),
+                    symptoms=_s_list(diagnosis_dict.get("symptoms")),
+                    cause=_s_str(diagnosis_dict.get("cause")),
+                    organic_treatment=_s_list(diagnosis_dict.get("organic_treatment")),
+                    chemical_treatment=_s_list(diagnosis_dict.get("chemical_treatment")),
+                    prevention=_s_list(diagnosis_dict.get("prevention")),
+                    evidence_sources=_s_list(diagnosis_dict.get("evidence_sources")),
+                    is_escalated=bool(diagnosis_dict.get("is_escalated", False)),
+                    escalation_reason=_s_str(diagnosis_dict.get("escalation_reason")),
+                    additional_notes=_s_str(diagnosis_dict.get("additional_notes")),
                 )
             except Exception as e:
                 logger.warning("Failed to parse DiagnosisResult: %s", e)
                 diagnosis = None
-                response_text = clean_text[:500]
+                if not response_text:
+                    response_text = clean_text[:500]
 
             if not response_text and diagnosis:
                 response_text = self._generate_response_text(diagnosis)
 
+            # Detect follow-up requirement if disease is missing/unclear or response asks for details
+            if not needs_followup:
+                if (diagnosis is None or not diagnosis.disease or diagnosis.confidence < 0.6) and (
+                    "?" in response_text
+                    or "please" in response_text.lower()
+                    or "जानकारी" in response_text
+                    or "photo" in response_text.lower()
+                    or "symptom" in response_text.lower()
+                ):
+                    needs_followup = True
+                    followup_question = response_text
+
             return {
                 "diagnosis": diagnosis,
                 "response_text": response_text,
-                "needs_followup": False,
-                "followup_question": None,
+                "needs_followup": needs_followup,
+                "followup_question": followup_question,
                 "tools_called": [],
                 "confidence": diagnosis.confidence if diagnosis else 0.0,
                 "raw_output": raw_output,
@@ -301,7 +344,7 @@ class DiagnosticAgent:
         return {
             "diagnosis": None,
             "response_text": clean_text[:500],
-            "needs_followup": "?" in clean_text,
+            "needs_followup": "?" in clean_text or "please" in clean_text.lower(),
             "followup_question": clean_text[:500] if "?" in clean_text else None,
             "tools_called": [],
             "confidence": 0.0,
